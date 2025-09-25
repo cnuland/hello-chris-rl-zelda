@@ -1,0 +1,161 @@
+# Zelda-LLM-RL Project Configuration
+# Hybrid AI System for The Legend of Zelda: Oracle of Seasons
+
+## Project Overview
+This project implements a sophisticated hybrid AI agent that plays The Legend of Zelda: Oracle of Seasons using a two-tier architecture:
+- **High-Level Planner**: 70B LLM (Llama 3.1) served via vLLM on KServe for strategic decision making
+- **Low-Level Controller**: PPO reinforcement learning agent for precise frame-level control
+- **Game Environment**: PyBoy emulator with RAM/tile-based state observation (not pixel-based)
+
+## Architecture Components
+
+### Core Directories
+- `agents/`: LLM planner and RL controller implementations
+- `emulator/`: PyBoy integration and Zelda environment wrapper
+- `observation/`: State encoding and RAM address mappings
+- `training/`: PPO training scripts and GRPO optimization
+- `configs/`: YAML configuration files for training and deployment
+- `ops/openshift/`: Kubernetes/OpenShift deployment manifests
+- `notebooks/`: Jupyter notebooks for experimentation and training
+
+### Key Technologies
+- **Reinforcement Learning**: PPO via CleanRL, Gymnasium environments
+- **Large Language Models**: vLLM serving, GRPO preference optimization
+- **Game Emulation**: PyBoy for Game Boy emulation
+- **Cloud Deployment**: OpenShift AI, KServe, Kubernetes
+- **ML Frameworks**: PyTorch, Transformers, TRL
+- **Monitoring**: Weights & Biases, TensorBoard
+
+## Development Workflow
+
+### Environment Setup
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Install in development mode
+pip install -e .
+```
+
+### Training Commands
+```bash
+# Run PPO baseline training
+python training/run_cleanrl.py --rom-path roms/zelda_oos.gb
+
+# Train planner with preference optimization
+python training/run_grpo_llm.py
+```
+
+### Deployment
+```bash
+# Deploy LLM planner to OpenShift
+oc apply -f ops/openshift/kserve/zelda-planner-70b.yaml
+```
+
+## Code Style Guidelines
+
+### Python Standards
+- Follow PEP 8 style guidelines
+- Use type hints for all function signatures
+- Document classes and methods with comprehensive docstrings
+- Prefer dataclasses for configuration objects
+- Use async/await for I/O operations (LLM calls, API requests)
+
+### ML/RL Specific Conventions
+- Normalize observations to [0, 1] range in state encoders
+- Use proper gradient clipping and learning rate scheduling
+- Implement proper checkpointing for long training runs
+- Log comprehensive metrics for training monitoring
+
+### Error Handling
+- Use proper exception handling for emulator operations
+- Implement fallback behaviors for LLM failures
+- Graceful degradation when components are unavailable
+
+## AI Assistant Instructions
+
+When working with this codebase, please:
+
+1. **Understand the Hybrid Architecture**: This is not just an RL project - it combines symbolic reasoning (LLM) with continuous control (RL). Consider both components when making changes.
+
+2. **State Representation**: The project uses RAM/tile data, not visual processing. When modifying observation spaces, work with structured data in `observation/state_encoder.py`.
+
+3. **Macro Actions**: The bridge between LLM planning and RL control happens through macro actions in `agents/macro_actions.py`. These convert high-level commands to primitive button sequences.
+
+4. **Cloud-Native Design**: This project is designed for OpenShift AI deployment. Consider scalability and containerization when suggesting modifications.
+
+5. **Game-Specific Knowledge**: When working on Zelda-specific logic, reference the RAM mappings in `observation/ram_maps/zelda_addresses.py` and consider game mechanics like seasons, dungeons, and item collection.
+
+6. **Training Considerations**: Long training runs are expected. Ensure proper checkpointing, logging, and resource management in training code.
+
+## Important Files to Understand
+
+### Core Implementation
+- `emulator/zelda_env.py`: Gymnasium environment wrapper
+- `agents/planner.py`: LLM planner client with vLLM integration
+- `agents/controller.py`: PPO agent with macro action support
+- `observation/state_encoder.py`: Converts game state for RL and LLM
+
+### Configuration
+- `configs/controller_ppo.yaml`: PPO training hyperparameters
+- `configs/planner_prompt.yaml`: LLM system prompts
+- `configs/env.yaml`: Environment settings
+
+### Deployment
+- `ops/openshift/kserve/zelda-planner-70b.yaml`: LLM service deployment
+- `requirements.txt`: Python dependencies
+- `setup.py`: Package configuration
+
+## Testing Strategy
+
+### Unit Tests
+- Test state encoding/decoding functions
+- Validate macro action expansions
+- Test reward calculation logic
+
+### Integration Tests  
+- Test emulator environment functionality
+- Validate LLM planner responses
+- Test full training pipeline
+
+### Performance Tests
+- Benchmark state encoding performance
+- Test LLM response times
+- Validate training throughput
+
+## Debugging Tips
+
+### Common Issues
+- **Emulator crashes**: Check ROM file path and PyBoy compatibility
+- **LLM timeouts**: Verify KServe deployment and network connectivity
+- **Training instability**: Check hyperparameters and reward scaling
+- **Memory issues**: Monitor GPU memory usage during training
+
+### Logging
+- Use structured logging with appropriate levels
+- Log key metrics at regular intervals
+- Include state information in debug logs
+
+## ROM Requirements
+- Place legally obtained Oracle of Seasons ROM in `roms/` directory
+- File should be named consistently in configuration files
+- Project does not distribute ROM files
+
+## Security Considerations
+- LLM API tokens should be stored as Kubernetes secrets
+- Use proper RBAC for OpenShift deployments
+- Secure model storage with appropriate access controls
+
+## Performance Expectations
+- Training typically requires GPU resources
+- LLM inference needs significant memory (70B model)
+- Emulator runs at 60 FPS with frame skip
+- Full training runs may take several hours to days
+
+## Contribution Guidelines
+- Test changes with both mock and real LLM planners
+- Ensure compatibility with OpenShift AI environment
+- Document new macro actions and state features
+- Update configuration files when adding new parameters
+
+This project represents cutting-edge research in hybrid AI systems combining symbolic reasoning with continuous control in a complex game environment.
