@@ -65,6 +65,7 @@ You receive a JSON object with the current game state including:
 - season: Current season and season spirits found
 - dungeon: Keys, maps, bosses defeated
 - environment: Nearby tiles and terrain
+- visual: Current game screen image and detected visual elements (NPCs, enemies, items, text)
 
 Output Format:
 Respond with JSON containing:
@@ -94,11 +95,20 @@ Available Macro Types:
 
 Strategy Guidelines:
 1. Prioritize survival (collect hearts if health is low)
-2. Collect rupees and keys when possible
-3. Use appropriate seasons for obstacles
-4. Explore systematically to find items and secrets
-5. Progress through dungeons methodically
-6. Keep plans simple and achievable
+2. Analyze the visual screen data to identify:
+   - Visible enemies and their positions
+   - Collectible items on screen
+   - Interactive objects (chests, switches, doors)
+   - NPCs and dialogue opportunities
+   - Environmental hazards or obstacles
+3. Collect rupees and keys when possible
+4. Use appropriate seasons for obstacles
+5. Explore systematically to find items and secrets
+6. Progress through dungeons methodically
+7. Read on-screen text and dialogue for game progression clues
+8. Keep plans simple and achievable
+
+IMPORTANT: Always consider both the structured data AND the visual screen content when making decisions.
 
 Be concise and focus on immediate actionable objectives."""
 
@@ -153,6 +163,17 @@ Be concise and focus on immediate actionable objectives."""
                 'player_tile_pos': (env.get('player_tile_x', 0), env.get('player_tile_y', 0)),
                 'nearby_obstacles': self._summarize_nearby_tiles(env.get('nearby_tiles', []))
             }
+        
+        # Add visual data if available
+        if 'visual' in game_state:
+            visual_data = game_state['visual']
+            simplified_state['visual'] = {
+                'screen_description': visual_data.get('description', 'No visual description available'),
+                'detected_elements': visual_data.get('detected_elements', {}),
+                'screen_available': not visual_data.get('error', False)
+            }
+            # Note: We include screen description and detected elements, but not the raw image data
+            # The raw image would be too large for the prompt, so we rely on the visual encoder's analysis
 
         return f"Current game state:\n{json.dumps(simplified_state, indent=2)}\n\nProvide your strategic plan:"
 

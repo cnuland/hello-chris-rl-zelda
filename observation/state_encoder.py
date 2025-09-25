@@ -1,20 +1,28 @@
 """State encoder for Zelda Oracle of Seasons.
 
 Converts raw RAM/tile data into structured observations for both RL and LLM agents.
+Now includes visual processing for enhanced LLM context.
 """
 
 import numpy as np
 import json
 from typing import Dict, Any, List, Tuple, Optional
 from .ram_maps.zelda_addresses import *
+from .visual_encoder import VisualEncoder
 
 
 class ZeldaStateEncoder:
     """Encodes Zelda game state from PyBoy memory and tile data."""
 
-    def __init__(self):
-        """Initialize state encoder."""
+    def __init__(self, enable_visual: bool = True):
+        """Initialize state encoder.
+        
+        Args:
+            enable_visual: Whether to include visual processing for LLM
+        """
         self.state_vector_size = 128  # Size of numeric state vector for RL
+        self.enable_visual = enable_visual
+        self.visual_encoder = VisualEncoder() if enable_visual else None
 
     def encode_state(self, pyboy_bridge) -> Tuple[np.ndarray, Dict[str, Any]]:
         """Encode complete game state.
@@ -25,12 +33,32 @@ class ZeldaStateEncoder:
         Returns:
             Tuple of (numeric_vector, structured_dict)
             - numeric_vector: For RL agent (128 floats)
-            - structured_dict: For LLM planner (JSON-serializable)
+            - structured_dict: For LLM planner (JSON-serializable, includes visual data)
         """
         # Get structured state data
         structured_state = self._get_structured_state(pyboy_bridge)
 
-        # Convert to numeric vector for RL
+        # Add visual data for LLM if enabled
+        if self.enable_visual and self.visual_encoder:
+            try:
+                screen_array = pyboy_bridge.get_screen()
+                visual_data = self.visual_encoder.encode_screen_for_llm(screen_array)
+                visual_elements = self.visual_encoder.detect_visual_elements(screen_array)
+                screen_description = self.visual_encoder.describe_screen_content(screen_array)
+                
+                structured_state['visual'] = {
+                    'screen_image': visual_data,
+                    'detected_elements': visual_elements,
+                    'description': screen_description
+                }
+            except Exception as e:
+                # Fallback gracefully if visual processing fails
+                structured_state['visual'] = {
+                    'error': f"Visual processing failed: {e}",
+                    'screen_available': False
+                }
+
+        # Convert to numeric vector for RL (visual data not included in RL vector)
         numeric_vector = self._structured_to_vector(structured_state)
 
         return numeric_vector, structured_state
