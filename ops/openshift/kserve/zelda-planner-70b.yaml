@@ -1,0 +1,212 @@
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: zelda-planner-70b
+  namespace: zelda-ai
+  labels:
+    app: zelda-planner
+    model: llama-3.1-70b-instruct
+  annotations:
+    serving.kserve.io/deploymentMode: Serverless
+    autoscaling.knative.dev/minScale: "0"
+    autoscaling.knative.dev/maxScale: "3"
+spec:
+  predictor:
+    serviceAccountName: kserve-sa
+    model:
+      runtime: vllm
+      modelFormat:
+        name: huggingface
+      protocol: v2
+      storageUri: pvc://models/llama-3.1-70b-instruct
+      resources:
+        requests:
+          cpu: "4"
+          memory: "32Gi"
+          nvidia.com/gpu: "1"
+        limits:
+          cpu: "8"
+          memory: "64Gi"
+          nvidia.com/gpu: "1"
+      env:
+        - name: VLLM_ARGS
+          value: "--model /mnt/models --tensor-parallel-size 1 --gpu-memory-utilization 0.95 --max-model-len 4096 --trust-remote-code"
+        - name: VLLM_CPU_KVCACHE_SPACE
+          value: "4"
+        - name: VLLM_ATTENTION_BACKEND
+          value: "FLASHINFER"
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-token-secret
+              key: token
+      readinessProbe:
+        httpGet:
+          path: /v1/models
+          port: 8080
+        initialDelaySeconds: 30
+        periodSeconds: 10
+        timeoutSeconds: 5
+        failureThreshold: 3
+      livenessProbe:
+        httpGet:
+          path: /health
+          port: 8080
+        initialDelaySeconds: 60
+        periodSeconds: 30
+        timeoutSeconds: 10
+        failureThreshold: 3
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: zelda-planner-service
+  namespace: zelda-ai
+  labels:
+    app: zelda-planner
+spec:
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+      protocol: TCP
+  selector:
+    app: zelda-planner
+
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: zelda-planner-route
+  namespace: zelda-ai
+  labels:
+    app: zelda-planner
+  annotations:
+    haproxy.router.openshift.io/timeout: "300s"
+spec:
+  to:
+    kind: Service
+    name: zelda-planner-service
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: zelda-models-pvc
+  namespace: zelda-ai
+  labels:
+    app: zelda-planner
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 200Gi
+  storageClassName: fast-ssd
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: hf-token-secret
+  namespace: zelda-ai
+type: Opaque
+data:
+  # Base64 encoded Hugging Face token (user must provide)
+  token: ""
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kserve-sa
+  namespace: zelda-ai
+  labels:
+    app: zelda-planner
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kserve-role
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "endpoints", "persistentvolumeclaims", "events", "configmaps", "secrets"]
+    verbs: ["*"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "daemonsets", "replicasets", "statefulsets"]
+    verbs: ["*"]
+  - apiGroups: ["serving.kserve.io"]
+    resources: ["*"]
+    verbs: ["*"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kserve-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kserve-role
+subjects:
+  - kind: ServiceAccount
+    name: kserve-sa
+    namespace: zelda-ai
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: zelda-planner-network-policy
+  namespace: zelda-ai
+spec:
+  podSelector:
+    matchLabels:
+      app: zelda-planner
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: zelda-ai
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 443  # HTTPS
+        - protocol: TCP
+          port: 80   # HTTP
+        - protocol: UDP
+          port: 53   # DNS
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: zelda-planner-metrics
+  namespace: zelda-ai
+  labels:
+    app: zelda-planner
+spec:
+  selector:
+    matchLabels:
+      app: zelda-planner
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s

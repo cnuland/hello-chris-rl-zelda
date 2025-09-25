@@ -1,0 +1,55 @@
+from setuptools import setup, find_packages
+
+setup(
+    name="zelda-rl-llm",
+    version="0.1.0",
+    description="Hybrid AI agent for The Legend of Zelda: Oracle of Seasons using LLM planning and RL control",
+    author="Zelda AI Team",
+    packages=find_packages(),
+    python_requires=">=3.9",
+    install_requires=[
+        "gymnasium>=0.29.1",
+        "pyboy>=1.6.9",
+        "torch>=2.1.0",
+        "numpy>=1.24.4",
+        "opencv-python>=4.8.1",
+        "matplotlib>=3.7.2",
+        "seaborn>=0.12.2",
+        "wandb>=0.15.12",
+        "tensorboard>=2.14.1",
+        "tqdm>=4.66.1",
+        "pyyaml>=6.0.1",
+        "httpx>=0.25.0",
+        "transformers>=4.35.0",
+        "trl>=0.7.4",
+        "scipy>=1.11.3",
+        "pandas>=2.1.1",
+    ],
+    extras_require={
+        "dev": [
+            "pytest>=7.4.2",
+            "black>=23.9.1",
+            "flake8>=6.1.0",
+            "mypy>=1.6.1",
+        ],
+        "notebooks": [
+            "jupyterlab>=4.0.6",
+            "notebook>=7.0.6",
+            "ipywidgets>=8.1.1",
+            "plotly>=5.17.0",
+        ],
+        "gpu": [
+            "torch[cuda]>=2.1.0",
+        ],
+    },
+    classifiers=[
+        "Development Status :: 3 - Alpha",
+        "Intended Audience :: Researchers",
+        "License :: OSI Approved :: MIT License",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Topic :: Scientific/Engineering :: Artificial Intelligence",
+        "Topic :: Games/Entertainment",
+    ],
+)

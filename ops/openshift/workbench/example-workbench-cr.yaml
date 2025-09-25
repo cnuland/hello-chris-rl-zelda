@@ -1,0 +1,304 @@
+apiVersion: kubeflow.org/v1
+kind: Notebook
+metadata:
+  name: zelda-training-workbench
+  namespace: zelda-ai
+  labels:
+    app: zelda-workbench
+    project: zelda-rl-llm
+  annotations:
+    notebooks.opendatahub.io/inject-oauth: "true"
+    notebooks.opendatahub.io/oauth-logout-url: "https://rhods-dashboard.apps.cluster.example.com/projects/zelda-ai"
+spec:
+  template:
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: nvidia.com/gpu.present
+                    operator: In
+                    values:
+                      - "true"
+      containers:
+        - name: zelda-workbench
+          image: quay.io/opendatahub/workbench-images:jupyter-pytorch-ubi9-python-3.9-2024a-20240301
+          imagePullPolicy: Always
+          workingDir: /opt/app-root/src
+          env:
+            - name: NOTEBOOK_ARGS
+              value: |-
+                --ServerApp.port=8888
+                --ServerApp.token=''
+                --ServerApp.password=''
+                --ServerApp.base_url=/notebook/zelda-ai/zelda-training-workbench
+                --ServerApp.quit_button=False
+                --ServerApp.tornado_settings={"user":"zelda-user","hub_host":"https://rhods-dashboard.apps.cluster.example.com","hub_prefix":"/projects/zelda-ai"}
+            - name: JUPYTER_IMAGE
+              value: quay.io/opendatahub/workbench-images:jupyter-pytorch-ubi9-python-3.9-2024a-20240301
+            - name: PIP_CERT
+              value: /etc/ssl/certs/ca-bundle.crt
+            - name: REQUESTS_CA_BUNDLE
+              value: /etc/ssl/certs/ca-bundle.crt
+            - name: SSL_CERT_FILE
+              value: /etc/ssl/certs/ca-bundle.crt
+            - name: PIPELINES_SSL_SA_CERTS
+              value: /etc/ssl/certs/ca-bundle.crt
+            - name: GIT_SSL_CAINFO
+              value: /etc/ssl/certs/ca-bundle.crt
+          ports:
+            - name: notebook-port
+              containerPort: 8888
+              protocol: TCP
+          resources:
+            requests:
+              cpu: "2"
+              memory: "8Gi"
+              nvidia.com/gpu: "1"
+            limits:
+              cpu: "4"
+              memory: "16Gi"
+              nvidia.com/gpu: "1"
+          volumeMounts:
+            - name: zelda-workbench-pvc
+              mountPath: /opt/app-root/src
+            - name: shm
+              mountPath: /dev/shm
+            - name: elyra-dsp-details
+              mountPath: /opt/app-root/runtimes
+          envFrom:
+            - secretRef:
+                name: aws-connection-zelda-s3
+          livenessProbe:
+            httpGet:
+              path: /notebook/zelda-ai/zelda-training-workbench/api
+              port: notebook-port
+              scheme: HTTP
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 1
+            successThreshold: 1
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /notebook/zelda-ai/zelda-training-workbench/api
+              port: notebook-port
+              scheme: HTTP
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 1
+            successThreshold: 1
+            failureThreshold: 3
+      serviceAccountName: zelda-workbench-sa
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 100
+        fsGroup: 100
+      volumes:
+        - name: zelda-workbench-pvc
+          persistentVolumeClaim:
+            claimName: zelda-workbench-pvc
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 2Gi
+        - name: elyra-dsp-details
+          secret:
+            secretName: ds-pipeline-config
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: zelda-workbench-pvc
+  namespace: zelda-ai
+  labels:
+    app: zelda-workbench
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: gp3-csi
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: zelda-workbench-sa
+  namespace: zelda-ai
+  labels:
+    app: zelda-workbench
+  annotations:
+    serviceaccounts.openshift.io/oauth-redirectreference.primary: '{"kind":"OAuthRedirectReference","apiVersion":"v1","reference":{"kind":"Route","name":"zelda-training-workbench"}}'
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: zelda-training-workbench
+  namespace: zelda-ai
+  labels:
+    app: zelda-workbench
+  annotations:
+    notebook-name: zelda-training-workbench
+spec:
+  ports:
+    - name: notebook-port
+      port: 80
+      protocol: TCP
+      targetPort: notebook-port
+  selector:
+    notebook-name: zelda-training-workbench
+
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: zelda-training-workbench
+  namespace: zelda-ai
+  labels:
+    app: zelda-workbench
+  annotations:
+    notebook-name: zelda-training-workbench
+    haproxy.router.openshift.io/timeout: "600s"
+spec:
+  port:
+    targetPort: notebook-port
+  tls:
+    insecureEdgeTerminationPolicy: Redirect
+    termination: edge
+  to:
+    kind: Service
+    name: zelda-training-workbench
+    weight: 100
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: aws-connection-zelda-s3
+  namespace: zelda-ai
+  labels:
+    opendatahub.io/dashboard: "true"
+    opendatahub.io/managed: "true"
+  annotations:
+    opendatahub.io/connection-type: s3
+    openshift.io/display-name: Zelda S3 Connection
+type: Opaque
+data:
+  # Base64 encoded S3 credentials (user must provide)
+  AWS_ACCESS_KEY_ID: ""
+  AWS_SECRET_ACCESS_KEY: ""
+  AWS_S3_BUCKET: ""
+  AWS_S3_ENDPOINT: ""
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: zelda-training-config
+  namespace: zelda-ai
+  labels:
+    app: zelda-workbench
+data:
+  requirements.txt: |
+    gymnasium==0.29.1
+    pyboy==1.6.9
+    torch==2.1.0
+    torchvision==0.16.0
+    numpy==1.24.4
+    opencv-python==4.8.1.78
+    matplotlib==3.7.2
+    seaborn==0.12.2
+    wandb==0.15.12
+    tensorboard==2.14.1
+    jupyterlab==4.0.6
+    notebook==7.0.6
+    ipywidgets==8.1.1
+    tqdm==4.66.1
+    pyyaml==6.0.1
+    httpx==0.25.0
+    asyncio==3.4.3
+    transformers==4.35.0
+    accelerate==0.24.1
+    datasets==2.14.6
+    trl==0.7.4
+    peft==0.6.2
+    bitsandbytes==0.41.2.post2
+    scipy==1.11.3
+    scikit-learn==1.3.1
+    pandas==2.1.1
+    plotly==5.17.0
+    bokeh==3.2.2
+
+  startup_script.sh: |
+    #!/bin/bash
+
+    # Install additional packages
+    pip install -r /opt/app-root/src/requirements.txt
+
+    # Clone the Zelda project (if not already present)
+    if [ ! -d "/opt/app-root/src/zelda-rl-llm" ]; then
+        echo "Setting up Zelda RL-LLM project..."
+        # Note: In practice, you'd clone from your actual repository
+        # git clone https://github.com/your-org/zelda-rl-llm.git
+        mkdir -p /opt/app-root/src/zelda-rl-llm
+    fi
+
+    # Set up environment variables
+    export CUDA_VISIBLE_DEVICES=0
+    export PYTHONPATH="/opt/app-root/src/zelda-rl-llm:$PYTHONPATH"
+
+    # Create necessary directories
+    mkdir -p /opt/app-root/src/data
+    mkdir -p /opt/app-root/src/models
+    mkdir -p /opt/app-root/src/logs
+    mkdir -p /opt/app-root/src/checkpoints
+
+    echo "Zelda RL-LLM workbench setup complete!"
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: zelda-workbench-role
+  namespace: zelda-ai
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "configmaps", "secrets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: zelda-workbench-rolebinding
+  namespace: zelda-ai
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: zelda-workbench-role
+subjects:
+  - kind: ServiceAccount
+    name: zelda-workbench-sa
+    namespace: zelda-ai
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ds-pipeline-config
+  namespace: zelda-ai
+type: Opaque
+data:
+  # Pipeline configuration for Elyra/Kubeflow (if using)
+  metadata: ewogICJzY2hlbWFfbmFtZSI6ICJhaXJmbG93IiwKICAiZGlzcGxheV9uYW1lIjogIlplbGRhIEFpcmZsb3ciLAogICJtZXRhZGF0YSI6IHsKICAgICJhcGlfdmVyc2lvbiI6ICJ2MSIsCiAgICAiYXBpX2VuZHBvaW50IjogImh0dHBzOi8vYWlyZmxvdy56ZWxkYS1haS5zdmMuY2x1c3Rlci5sb2NhbCIsCiAgICAidXNlcl9uYW1lc3BhY2UiOiAiemVsZGEtYWkiCiAgfQp9
