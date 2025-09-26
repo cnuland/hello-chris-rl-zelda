@@ -30,9 +30,10 @@ class ZeldaPyBoyBridge:
         if self.pyboy:
             self.pyboy.stop()
 
+        # Use new PyBoy v2.x API
         self.pyboy = PyBoy(
             self.rom_path,
-            window_type="headless" if self.headless else "SDL2",
+            window="null" if self.headless else "SDL2",
             debug=False
         )
 
@@ -79,7 +80,9 @@ class ZeldaPyBoyBridge:
         if not self.pyboy:
             raise RuntimeError("Emulator not initialized")
 
-        return np.array(self.pyboy.botsupport.screen.screen_ndarray())
+        # Use new PyBoy v2.x API - screen has RGBA format, convert to RGB
+        screen_rgba = self.pyboy.screen.ndarray
+        return screen_rgba[:, :, :3]  # Remove alpha channel
 
     def get_memory(self, address: int) -> int:
         """Read byte from memory.
@@ -93,7 +96,8 @@ class ZeldaPyBoyBridge:
         if not self.pyboy:
             raise RuntimeError("Emulator not initialized")
 
-        return self.pyboy.get_memory_value(address)
+        # Use new PyBoy v2.x API - direct memory access
+        return self.pyboy.memory[address]
 
     def get_memory_range(self, start: int, length: int) -> bytes:
         """Read range of bytes from memory.
@@ -108,8 +112,9 @@ class ZeldaPyBoyBridge:
         if not self.pyboy:
             raise RuntimeError("Emulator not initialized")
 
+        # Use new PyBoy v2.x API - direct memory slice access
         return bytes([
-            self.pyboy.get_memory_value(start + i)
+            self.pyboy.memory[start + i]
             for i in range(length)
         ])
 
@@ -122,9 +127,9 @@ class ZeldaPyBoyBridge:
         if not self.pyboy:
             raise RuntimeError("Emulator not initialized")
 
-        # Get background tile map (32x32 tiles)
-        tilemap = self.pyboy.botsupport.tilemap_background()
-        return np.array([[tilemap.tile(x, y) for x in range(32)] for y in range(32)])
+        # Get background tile map (32x32 tiles) using new PyBoy v2.x API
+        tilemap = self.pyboy.tilemap_background
+        return np.array([[tilemap.tile(x, y).tile_identifier for x in range(32)] for y in range(32)])
 
     def save_state(self) -> bytes:
         """Save current emulator state.

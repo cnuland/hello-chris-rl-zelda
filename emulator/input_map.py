@@ -1,7 +1,7 @@
 """Input mapping for Zelda Oracle of Seasons controls."""
 
 from enum import IntEnum
-from pyboy import WindowEvent
+from pyboy.utils import WindowEvent
 
 
 class ZeldaAction(IntEnum):
