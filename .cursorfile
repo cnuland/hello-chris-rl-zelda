@@ -159,3 +159,7 @@ When working with this codebase, please:
 - Update configuration files when adding new parameters
 
 This project represents cutting-edge research in hybrid AI systems combining symbolic reasoning with continuous control in a complex game environment.
+
+
+# Tests
+All test scripts should be created in a /tmp folder and deleted after being run
