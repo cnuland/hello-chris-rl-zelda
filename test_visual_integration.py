@@ -78,9 +78,38 @@ def test_visual_processing():
         print("\n🖼️ Testing visual encoding...")
         visual_data = visual_encoder.encode_screen_for_llm(screen_array)
         print(f"✅ Visual encoding complete")
-        print(f"   Image format: {visual_data['format']}")
-        print(f"   Image size: {visual_data['size']}")
-        print(f"   Base64 data length: {len(visual_data['image_data'])} characters")
+        print(f"   Format: {visual_data['format']}")
+        print(f"   Dimensions: {visual_data['dimensions']}")
+        print(f"   Pixel statistics: {visual_data['pixel_stats']}")
+        print(f"   Pixel data size: {len(visual_data['pixel_data'])} rows x {len(visual_data['pixel_data'][0])} cols")
+        
+        # Output sample pixel data for LLM testing
+        print(f"\n📋 Raw Pixel Data Sample for LLM Testing:")
+        print(f"=" * 70)
+        print(f"SCREEN DIMENSIONS: {visual_data['dimensions']['height']}x{visual_data['dimensions']['width']} pixels")
+        print(f"PIXEL STATISTICS: {visual_data['pixel_stats']}")
+        print(f"")
+        print(f"SAMPLE PIXEL DATA (first 10x10 region, RGB values 0-255):")
+        pixel_data = visual_data['pixel_data']
+        for y in range(min(10, len(pixel_data))):
+            row_sample = []
+            for x in range(min(10, len(pixel_data[y]))):
+                rgb = pixel_data[y][x]
+                row_sample.append(f"[{rgb[0]:3d},{rgb[1]:3d},{rgb[2]:3d}]")
+            print(f"Row {y:2d}: {' '.join(row_sample)}")
+        
+        print(f"\n💡 For LLM testing, use this JSON structure:")
+        sample_payload = {
+            'screen_data': {
+                'dimensions': visual_data['dimensions'],
+                'pixel_stats': visual_data['pixel_stats'], 
+                'pixel_sample': pixel_data[:5],  # First 5 rows for sample
+                'full_pixel_data': "[COMPLETE_144x160x3_ARRAY_AVAILABLE]"
+            }
+        }
+        print(json.dumps(sample_payload, indent=2))
+        print(f"=" * 70)
+        print(f"🎯 This gives the LLM direct access to RGB pixel values!")
         
         # Test visual element detection
         print("\n🔍 Testing visual element detection...")
@@ -109,11 +138,43 @@ def test_visual_processing():
             
             if 'screen_image' in visual_state:
                 img_data = visual_state['screen_image']
-                print(f"   Screen image size: {img_data.get('size')}")
-                print(f"   Screen image format: {img_data.get('format')}")
+                print(f"   Screen data format: {img_data.get('format')}")
+                print(f"   Screen dimensions: {img_data.get('dimensions')}")
+                print(f"   Pixel statistics: {img_data.get('pixel_stats')}")
             
             if 'description' in visual_state:
                 print(f"   Screen description: {visual_state['description'][:100]}...")
+        
+            # Output complete LLM payload with raw pixel data
+            print(f"\n🤖 Complete LLM Payload for Testing:")
+            print(f"=" * 70)
+            print(f"RAW PIXEL DATA (first 5 rows as sample):")
+            if 'screen_image' in visual_state and 'pixel_data' in visual_state['screen_image']:
+                pixel_data = visual_state['screen_image']['pixel_data']
+                for y in range(min(5, len(pixel_data))):
+                    row_sample = []
+                    for x in range(min(8, len(pixel_data[y]))):  # Show first 8 pixels per row
+                        rgb = pixel_data[y][x]
+                        row_sample.append(f"[{rgb[0]},{rgb[1]},{rgb[2]}]")
+                    print(f"Row {y}: {' '.join(row_sample)}...")
+                print(f"[...continues for full 144x160 screen...]")
+            print(f"")
+            print(f"COMPLETE GAME STATE + PIXEL DATA:")
+            # Create a clean version with truncated pixel data for readability
+            clean_state = structured_state.copy()
+            if 'visual' in clean_state and 'screen_image' in clean_state['visual']:
+                if 'pixel_data' in clean_state['visual']['screen_image']:
+                    # Keep just the first few rows for display
+                    clean_state['visual']['screen_image']['pixel_data'] = pixel_data[:3]  # First 3 rows
+                    clean_state['visual']['screen_image']['full_data_note'] = "Complete 144x160x3 RGB array available"
+            print(json.dumps(clean_state, indent=2))
+            print(f"=" * 70)
+            print(f"💬 This is exactly what the LLM planner receives:")
+            print(f"   • Raw RGB pixel data (144x160x3 array)")
+            print(f"   • Complete structured game state")
+            print(f"   • Visual description and detected elements") 
+            print(f"   • Pixel statistics and metadata")
+            print(f"   • Ready to paste into LLM for pixel-level analysis!")
                 
         else:
             print("❌ Visual data missing from structured state!")
@@ -123,9 +184,14 @@ def test_visual_processing():
         print("\n🎮 Testing with game actions...")
         actions_to_test = [ZeldaAction.RIGHT, ZeldaAction.DOWN, ZeldaAction.LEFT, ZeldaAction.UP, ZeldaAction.A]
         
+        additional_screens = []
+        
         for i, action in enumerate(actions_to_test):
             print(f"   Executing action {i+1}: {action.name}")
-            bridge.step(action)
+            
+            # Execute action multiple times for more effect
+            for _ in range(5):
+                bridge.step(action)
             
             # Get new state
             _, new_state = encoder.encode_state(bridge)
@@ -137,12 +203,44 @@ def test_visual_processing():
             if old_pos != new_pos:
                 print(f"     Position changed: {old_pos} -> {new_pos}")
             
+            # Check for visual changes
             if 'visual' in new_state and 'description' in new_state['visual']:
                 new_desc = new_state['visual']['description']
                 if new_desc != description:
                     print(f"     Screen content changed!")
+                    # Capture this screen for additional LLM testing
+                    if 'screen_image' in new_state['visual']:
+                        additional_screens.append({
+                            'action': action.name,
+                            'pixel_data': new_state['visual']['screen_image']['pixel_data'],
+                            'dimensions': new_state['visual']['screen_image']['dimensions'],
+                            'pixel_stats': new_state['visual']['screen_image']['pixel_stats'],
+                            'description': new_desc,
+                            'state': new_state
+                        })
             
             structured_state = new_state  # Update for next comparison
+        
+        # Output additional screen captures for LLM testing
+        if additional_screens:
+            print(f"\n📸 Additional Screen Captures for LLM Testing:")
+            print(f"=" * 70)
+            for i, screen_data in enumerate(additional_screens[:2]):  # Limit to 2 screens
+                print(f"\nSCREEN {i+1} (After {screen_data['action']} action):")
+                print(f"Description: {screen_data['description']}")
+                print(f"Dimensions: {screen_data['dimensions']}")
+                print(f"Pixel Stats: {screen_data['pixel_stats']}")
+                print(f"Sample pixel data (first 3 rows, first 5 pixels each):")
+                pixel_data = screen_data['pixel_data']
+                for y in range(min(3, len(pixel_data))):
+                    row_sample = []
+                    for x in range(min(5, len(pixel_data[y]))):
+                        rgb = pixel_data[y][x]
+                        row_sample.append(f"[{rgb[0]},{rgb[1]},{rgb[2]}]")
+                    print(f"  Row {y}: {' '.join(row_sample)}...")
+                print("-" * 50)
+            print(f"💡 Each screen contains complete 144x160x3 RGB arrays for LLM analysis")
+            print(f"=" * 70)
         
         # Summary
         print("\n" + "=" * 50)

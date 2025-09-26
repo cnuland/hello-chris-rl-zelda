@@ -1,22 +1,97 @@
 """Memory addresses for The Legend of Zelda: Oracle of Seasons.
 
-Based on community disassembly and RAM mapping projects.
-Addresses may vary by ROM version - these are for US v1.0.
+Based on Data Crystal community RAM mapping and oracles-disasm project.
+Addresses are for US v1.0 ROM. Source: https://datacrystal.romhacking.net/
 """
 
-# Player state addresses
-PLAYER_X = 0xD300  # Link's X position
-PLAYER_Y = 0xD301  # Link's Y position
-PLAYER_DIRECTION = 0xD302  # Facing direction (0-3)
-PLAYER_ROOM = 0xD303  # Current room/screen ID
-PLAYER_HEALTH = 0xD304  # Current health (hearts)
-PLAYER_MAX_HEALTH = 0xD305  # Maximum health
+# Core player position (these may need verification - not in Data Crystal map)
+PLAYER_X = 0xD300  # Link's X position (needs verification)
+PLAYER_Y = 0xD301  # Link's Y position (needs verification) 
+PLAYER_DIRECTION = 0xD302  # Facing direction (needs verification)
+PLAYER_ROOM = 0xD303  # Current room/screen ID (needs verification)
 
-# Inventory addresses
-RUPEES = 0xD310  # Current rupees (2 bytes, little endian)
-KEYS = 0xD312  # Small keys count
-SWORD_LEVEL = 0xD313  # Sword upgrade level
-SHIELD_LEVEL = 0xD314  # Shield upgrade level
+# Health system (Data Crystal confirmed)
+PLAYER_HEALTH = 0xC6A2  # Current hearts (quarter-hearts, divide by 4)
+PLAYER_MAX_HEALTH = 0xC6A3  # Maximum hearts (quarter-hearts, divide by 4)
+HEART_PIECES = 0xC6A4  # Heart pieces (0-3, becomes heart at 4)
+
+# Resources (Data Crystal confirmed)
+RUPEES = 0xC6A5  # Current rupees (2 bytes, decimal)
+ORE_CHUNKS = 0xC6A7  # Ore chunks (2 bytes)
+SHIELD_LEVEL = 0xC6A9  # Shield upgrade level
+CURRENT_BOMBS = 0xC6AA  # Current bomb count
+MAX_BOMBS = 0xC6AB  # Maximum bomb capacity
+SWORD_LEVEL = 0xC6AC  # Sword upgrade level
+CURRENT_BOMBCHUS = 0xC6AD  # Current Bombchu count
+SEED_SATCHEL_LEVEL = 0xC6AE  # Seed carrying capacity level
+
+# Active items (Data Crystal confirmed)
+B_BUTTON_ITEM = 0xC680  # Item assigned to B button
+A_BUTTON_ITEM = 0xC681  # Item assigned to A button
+
+# Inventory storage (Data Crystal confirmed)
+INVENTORY_START = 0xC682  # Start of 16-byte inventory storage
+INVENTORY_SIZE = 16  # 16 bytes of inventory data
+
+# Ring system (Data Crystal confirmed) 
+VASU_RING_FLAGS = 0xC6CA  # Ring flags and special ring conditions
+RING_BOX_LEVEL = 0xC6C6  # Ring box capacity level
+RINGS_OWNED_START = 0xC616  # Start of ring ownership flags (8 bytes)
+RINGS_BUFFER_START = 0xC5C0  # Ring buffer/flags (64 bytes)
+
+# Seed counts (Data Crystal confirmed)
+EMBER_SEEDS = 0xC6B5  # Ember Seeds count
+SCENT_SEEDS = 0xC6B6  # Scent Seeds count  
+PEGASUS_SEEDS = 0xC6B7  # Pegasus Seeds count
+GALE_SEEDS = 0xC6B8  # Gale Seeds count
+MYSTERY_SEEDS = 0xC6B9  # Mystery Seeds count
+GASHA_SEEDS = 0xC6BA  # Gasha Seeds count
+
+# Equipment levels (Data Crystal confirmed)
+FLUTE_TYPE = 0xC6AF  # Which flute/companion (Dimitri, Ricky, Moosh)
+SEASONS_OBTAINED = 0xC6B0  # Which seasons unlocked
+BOOMERANG_LEVEL = 0xC6B1  # Boomerang upgrade level
+MAGNETIC_GLOVES = 0xC6B2  # Magnetic gloves polarity/flags
+SLINGSHOT_LEVEL = 0xC6B3  # Slingshot upgrade level
+ROCS_FEATHER_LEVEL = 0xC6B4  # Roc's Feather jump upgrade
+
+# Progress tracking (Data Crystal confirmed)
+ESSENCES_COLLECTED = 0xC6BB  # Essences of Nature bitmask
+PLAYER_NAME = 0xC602  # Player name (6 bytes, null-terminated)
+TOTAL_DEATHS = 0xC61E  # Total death count (2 bytes)
+ENEMIES_KILLED = 0xC620  # Cumulative enemies killed (2 bytes)
+TIME_PASSED = 0xC622  # Time since file creation (4 bytes)
+RUPEES_COLLECTED = 0xC627  # Cumulative rupees collected (2 bytes)
+
+# World state (Data Crystal confirmed)
+CURRENT_LEVEL_BANK = 0xC63A  # Current map bank
+OVERWORLD_POSITION = 0xC63B  # Absolute overworld position (0x00-0xFF)
+DUNGEON_POSITION = 0xC63C  # Current dungeon room position  
+DUNGEON_FLOOR = 0xC63D  # Current dungeon floor number
+MAPLE_COUNTER = 0xC63E  # Maple encounter counter
+
+# Screen/level data (Data Crystal confirmed)
+OVERWORLD_FLAGS_START = 0xC700  # Screen flags (256 bytes): chests, events, etc.
+ENEMIES_ON_SCREEN = 0xCC30  # Count of active enemy sprites
+COLLISION_MAP_START = 0xCE00  # Current screen collision data (~0xB0 bytes)
+TILE_DATA_START = 0xCF00  # Current screen tile indices (~0xB0 bytes)
+
+# Settings (Data Crystal confirmed)
+SOUND_VOLUME = 0xC024  # Sound volume control bits
+TEXT_SPEED = 0xC629  # Message/text display speed (0x00-0x04)
+CUTSCENE_INDEX = 0xC2EF  # Current cutscene index
+
+# Gasha seed planting (Data Crystal confirmed - specific locations)
+GASHA_SEEDS_PLANTED = {
+    'B-16': 0xC64C,
+    'C-3': 0xC64D, 
+    'D-9': 0xC64E,
+    'D-12': 0xC64F,
+    'E-5': 0xC650,
+    'D-16': 0xC651,
+    'H-6': 0xC652,
+    'I-1': 0xC653
+}
 
 # Items (bit flags)
 INVENTORY_1 = 0xD320  # First inventory byte

@@ -10,20 +10,25 @@ from .input_map import ZeldaAction, ACTION_TO_EVENT, ACTION_TO_RELEASE
 class ZeldaPyBoyBridge:
     """Bridge between PyBoy emulator and Zelda environment."""
 
-    def __init__(self, rom_path: str, headless: bool = True):
+    def __init__(self, rom_path: str, headless: bool = True, auto_load_save_state: bool = True):
         """Initialize PyBoy emulator.
 
         Args:
             rom_path: Path to Oracle of Seasons ROM file
             headless: Whether to run without graphics display
+            auto_load_save_state: Whether to automatically load save state on reset
         """
         self.rom_path = rom_path
         self.headless = headless
+        self.auto_load_save_state = auto_load_save_state
         self.pyboy: Optional[PyBoy] = None
         self.last_action: Optional[ZeldaAction] = None
 
         # Frame skip for faster training
         self.frame_skip = 4
+        
+        # Determine save state path (same directory as ROM, same name + .state)
+        self.save_state_path = self.rom_path + ".state"
 
     def reset(self) -> None:
         """Reset the emulator to initial state."""
@@ -37,9 +42,33 @@ class ZeldaPyBoyBridge:
             debug=False
         )
 
-        # Skip intro/title screens by advancing frames
-        for _ in range(1000):
-            self.pyboy.tick()
+        # Load save state if available and auto_load is enabled
+        if self.auto_load_save_state:
+            try:
+                import os
+                if os.path.exists(self.save_state_path):
+                    print(f"🎮 Loading save state: {self.save_state_path}")
+                    # PyBoy expects a file-like object
+                    with open(self.save_state_path, 'rb') as state_file:
+                        self.pyboy.load_state(state_file)
+                    print("✅ Save state loaded successfully - skipping intro!")
+                else:
+                    print(f"⚠️  Save state not found: {self.save_state_path}")
+                    print("   Running from ROM start (will include intro/cutscenes)")
+                    # Fallback: Skip intro manually if no save state
+                    for _ in range(1000):
+                        self.pyboy.tick()
+            except Exception as e:
+                print(f"❌ Failed to load save state: {e}")
+                print("   Falling back to manual intro skip")
+                # Fallback: Skip intro manually if save state loading fails
+                for _ in range(1000):
+                    self.pyboy.tick()
+        else:
+            # Manual intro skip if auto_load is disabled
+            print("🎮 Auto-load disabled, running from ROM start")
+            for _ in range(1000):
+                self.pyboy.tick()
 
         self.last_action = None
 
