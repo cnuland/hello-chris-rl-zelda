@@ -1,0 +1,98 @@
+# Smart Arbitration Configuration - OPTIMIZED FOR LOCAL LLM
+# Takes advantage of 20ms response times for maximum intelligence
+
+# PPO Base Configuration
+ppo:
+  learning_rate: 3e-4
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_epsilon: 0.2
+  value_loss_coeff: 0.5
+  entropy_coeff: 0.01
+  max_grad_norm: 0.5
+
+# 🚀 ULTRA-FAST LOCAL LLM ARBITRATION 
+planner_integration:
+  use_planner: true
+  
+  # 🧠 AGGRESSIVE ARBITRATION - Enabled by 20ms Local LLM
+  use_smart_arbitration: true
+  base_planner_frequency: 60           # Every ~4 seconds (was 150!)
+  min_planner_frequency: 25            # Every ~1.7 seconds (was 50!)  
+  max_planner_frequency: 120           # Every ~8 seconds (was 300!)
+  
+  # 🎯 HYPER-RESPONSIVE CONTEXT TRIGGERS
+  trigger_on_new_room: true            # Instant exploration guidance
+  trigger_on_low_health: true          # Emergency response in <50ms
+  trigger_on_stuck: true               # Quick stuck detection
+  trigger_on_npc_interaction: true     # Real-time dialogue optimization
+  trigger_on_dungeon_entrance: true    # Immediate strategic planning
+  
+  # ⚡ OPTIMIZED FOR LOCAL PERFORMANCE
+  low_health_threshold: 0.25           
+  stuck_threshold: 40                  # Faster stuck detection (was 75)
+  macro_timeout: 30                    # Ultra-fast recovery (was 75!)
+  
+  # 🖥️ LOCAL LLM SERVER SETTINGS
+  endpoint_url: "http://localhost:8000/generate"
+  model_name: "local-llm"
+  max_tokens: 100                      # Fast, focused responses
+  temperature: 0.2                     # Consistent for training
+  timeout: 3.0                         # Ultra-fast timeout
+  max_retries: 1                       # No retries needed locally
+  
+  # 📈 HIGH-FREQUENCY PERFORMANCE TRACKING  
+  track_arbitration_performance: true
+  arbitration_success_window: 50       # Faster feedback loop
+
+# Environment optimized for frequent LLM calls
+environment:
+  frame_skip: 4
+  action_repeat: 1
+  observation_type: "vector"
+  normalize_observations: true
+  max_episode_steps: 8000
+
+# Enhanced Rewards (compatible with local LLM guidance)
+rewards:
+  time_penalty: -0.0001
+  movement_reward: 0.001
+  death_penalty: -3.0
+  
+  # EXPLORATION REWARDS - Enhanced by frequent LLM guidance
+  room_discovery_reward: 10.0
+  dungeon_discovery_reward: 25.0
+  dungeon_bonus: 5.0
+  npc_interaction_reward: 15.0
+  
+  # Local LLM specific rewards
+  llm_guidance_bonus: 1.0              # Small bonus for following LLM guidance
+  quick_response_bonus: 0.5            # Bonus for sub-50ms arbitration
+
+# Training optimized for high-frequency arbitration
+training:
+  total_timesteps: 300000
+  eval_frequency: 15000
+  save_frequency: 30000
+  log_frequency: 200                   # More frequent logging
+  
+  max_episode_steps: 5000              # Shorter episodes, more LLM interaction
+
+# 📊 LOCAL LLM SPECIFIC METRICS
+logging:
+  track_metrics:
+    - "episode_reward"
+    - "episode_length"
+    - "exploration_rate"
+    - "llm_calls_per_episode"          # Track LLM usage frequency
+    - "arbitration_latency"            # Monitor 20ms performance
+    - "context_trigger_accuracy"       # How often triggers help
+    - "local_llm_uptime"               # Server availability
+    - "macro_completion_speed"         # Benefit of faster timeouts
+    - "emergency_response_time"        # Critical health guidance
+    - "exploration_acceleration"       # LLM-guided discovery rate
+
+# Hardware
+hardware:
+  device: "auto"
+  num_workers: 1

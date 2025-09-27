@@ -1,0 +1,28 @@
+# Local LLM Planner Configuration
+# Optimized for vLLM server running on localhost:8000
+
+planner:
+  # 🖥️ LOCAL LLM SERVER SETTINGS
+  endpoint_url: "http://localhost:8000/generate"     # Your local vLLM server
+  model_name: "local-llm"                            # Local model identifier
+  
+  # ⚡ PERFORMANCE OPTIMIZATION FOR LOCAL LLM
+  max_tokens: 256                                    # Reduced for faster responses
+  temperature: 0.3                                   # Lower temp for more consistent output
+  timeout: 5.0                                       # Much faster timeout for local server
+  max_retries: 2                                     # Fewer retries needed locally
+  
+  # 🧠 SMART ARBITRATION OPTIMIZATION  
+  enable_fast_mode: true                             # Use shorter prompts for speed
+  cache_responses: true                              # Cache similar game states
+  batch_requests: false                              # No batching needed for local
+  
+  # 📊 LOCAL PERFORMANCE SETTINGS
+  expected_latency_ms: 200                          # ~200ms for local CPU inference
+  min_call_interval_ms: 100                         # Minimum time between calls
+  enable_request_compression: false                 # No compression needed locally
+  
+  # 🎯 CONTEXT OPTIMIZATION
+  max_context_length: 2048                          # Reasonable context for local model
+  enable_context_truncation: true                   # Truncate if needed for speed
+  prioritize_recent_state: true                     # Focus on recent game events

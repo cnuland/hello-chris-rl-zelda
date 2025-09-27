@@ -1,7 +1,7 @@
 # Zelda-LLM-RL Local Development Makefile
 
-# vLLM Configuration for DeepSeek Model
-VLLM_MODEL := deepseek-ai/DeepSeek-R1-Distill-Llama-70B
+# MLX Configuration for Qwen2.5 Model (Apple Silicon optimized)
+VLLM_MODEL := mlx-community/Qwen2.5-14B-Instruct-4bit
 VLLM_PORT := 8000
 PYTHON := python3
 
@@ -16,21 +16,11 @@ install: ## Install project dependencies
 	$(PYTHON) -m pip install -r requirements.txt
 	$(PYTHON) -m pip install vllm
 
-test-local: ## Deploy quantized model locally for testing
-	@echo "Starting local vLLM server with quantized model..."
+test-local: ## Deploy model locally using Apple Silicon accelerators (MLX)
+	@echo "Starting local MLX server with Apple Silicon acceleration..."
 	@echo "Model: $(VLLM_MODEL)"
 	@echo "Port: $(VLLM_PORT)"
-	$(PYTHON) -m vllm.entrypoints.api_server \
-		--model $(VLLM_MODEL) \
-		--dtype auto \
-		--tensor-parallel-size 1 \
-		--swap-space 24 \
-		--max-model-len 4096 \
-		--enable-chunked-prefill \
-		--enforce-eager \
-		--gpu-memory-utilization 0.9 \
-		--port $(VLLM_PORT) \
-		--disable-log-requests
+	mlx_lm.server --model $(VLLM_MODEL) --port $(VLLM_PORT)
 
 serve-local: test-local ## Alias for test-local
 
