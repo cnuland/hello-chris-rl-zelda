@@ -30,6 +30,36 @@ class ControllerConfig:
     max_grad_norm: float = 0.5
     use_planner: bool = True
     planner_frequency: int = 100  # Call planner every N steps
+    
+    # Planner override conditions (for pure RL mode)
+    override_on_low_health: bool = True
+    override_health_threshold: float = 0.3
+    override_on_stuck: bool = True
+    override_stuck_threshold: int = 50
+    macro_timeout: int = 200
+    
+    @classmethod
+    def from_yaml(cls, yaml_config: dict) -> 'ControllerConfig':
+        """Create config from YAML dictionary."""
+        ppo_config = yaml_config.get('ppo', {})
+        planner_config = yaml_config.get('planner_integration', {})
+        
+        return cls(
+            learning_rate=ppo_config.get('learning_rate', 3e-4),
+            gamma=ppo_config.get('gamma', 0.99),
+            gae_lambda=ppo_config.get('gae_lambda', 0.95),
+            clip_epsilon=ppo_config.get('clip_epsilon', 0.2),
+            value_loss_coeff=ppo_config.get('value_loss_coeff', 0.5),
+            entropy_coeff=ppo_config.get('entropy_coeff', 0.01),
+            max_grad_norm=ppo_config.get('max_grad_norm', 0.5),
+            use_planner=planner_config.get('use_planner', True),
+            planner_frequency=planner_config.get('planner_frequency', 100),
+            override_on_low_health=planner_config.get('override_on_low_health', True),
+            override_health_threshold=planner_config.get('override_health_threshold', 0.3),
+            override_on_stuck=planner_config.get('override_on_stuck', True),
+            override_stuck_threshold=planner_config.get('override_stuck_threshold', 50),
+            macro_timeout=planner_config.get('macro_timeout', 200)
+        )
 
 
 class PolicyNetwork(nn.Module):
@@ -173,41 +203,65 @@ class ZeldaController:
         self.episode_count = 0
 
     async def act(self, obs: np.ndarray, structured_state: Optional[Dict[str, Any]] = None) -> int:
-        """Choose action using policy network and planner integration.
+        """Choose action using policy network and optional planner integration.
 
         Args:
             obs: Observation vector
-            structured_state: Current structured game state
+            structured_state: Current structured game state (optional, only needed for LLM mode)
 
         Returns:
             Action to take
         """
+        # Pure RL mode - use only the neural network
+        if not self.config.use_planner:
+            return self._act_pure_rl(obs)
+        
+        # LLM-guided mode - use planner and macro actions
+        return await self._act_llm_guided(obs, structured_state)
+    
+    def _act_pure_rl(self, obs: np.ndarray) -> int:
+        """Pure RL decision making without LLM guidance."""
+        obs_tensor = torch.FloatTensor(obs).unsqueeze(0).to(self.device)
+        
+        with torch.no_grad():
+            action, _, _ = self.policy_net.get_action_and_value(obs_tensor)
+        
+        self.step_count += 1
+        return action.item()
+    
+    async def _act_llm_guided(self, obs: np.ndarray, structured_state: Optional[Dict[str, Any]]) -> int:
+        """LLM-guided decision making with macro actions."""
         # Check if we need to get a new plan from the LLM
-        if (self.config.use_planner and self.planner and
-            structured_state and
+        if (self.planner and structured_state and
             (self.step_count % self.config.planner_frequency == 0 or
              self.macro_executor.is_macro_complete())):
 
-            plan = await self.planner.get_plan(structured_state)
-            if plan:
-                macro_action = self.planner.get_macro_action(plan)
-                if macro_action:
-                    self.macro_executor.set_macro(macro_action)
+            try:
+                plan = await self.planner.get_plan(structured_state)
+                if plan:
+                    macro_action = self.planner.get_macro_action(plan)
+                    if macro_action:
+                        self.macro_executor.set_macro(macro_action)
+            except Exception as e:
+                # If LLM fails, fallback to pure RL
+                print(f"Warning: LLM planning failed ({e}), falling back to RL")
+                return self._act_pure_rl(obs)
 
         # Try to get action from macro executor first
-        if not self.macro_executor.is_macro_complete() and structured_state:
-            macro_action = self.macro_executor.get_next_action(structured_state)
-            if macro_action is not None:
-                return int(macro_action)
+        if (not self.macro_executor.is_macro_complete() and structured_state and 
+            self.macro_executor.current_macro is not None):
+            
+            # Check for macro timeout
+            if self.macro_executor.steps_executed > self.config.macro_timeout:
+                print(f"Warning: Macro timed out after {self.macro_executor.steps_executed} steps")
+                self.macro_executor.clear_macro()
+            else:
+                macro_action = self.macro_executor.get_next_action(structured_state)
+                if macro_action is not None:
+                    return int(macro_action)
 
         # Fallback to policy network
-        obs_tensor = torch.FloatTensor(obs).unsqueeze(0).to(self.device)
-
-        with torch.no_grad():
-            action, _, _ = self.policy_net.get_action_and_value(obs_tensor)
-
-        self.step_count += 1
-        return action.item()
+        return self._act_pure_rl(obs)
 
     def act_deterministic(self, obs: np.ndarray) -> int:
         """Choose action deterministically (for evaluation).

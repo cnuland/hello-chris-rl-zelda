@@ -52,6 +52,12 @@ class MacroExecutor:
         self.current_macro = macro
         self.primitive_queue = self._expand_macro(macro)
         self.steps_executed = 0
+    
+    def clear_macro(self) -> None:
+        """Clear the current macro and reset state."""
+        self.current_macro = None
+        self.primitive_queue = []
+        self.steps_executed = 0
 
     def get_next_action(self, current_state: Dict[str, Any]) -> Optional[ZeldaAction]:
         """Get next primitive action from current macro.

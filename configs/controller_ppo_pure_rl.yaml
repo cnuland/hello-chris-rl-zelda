@@ -1,0 +1,146 @@
+# PPO Controller Configuration for Zelda Oracle of Seasons - PURE RL MODE
+# This configuration disables LLM integration for standalone RL training
+
+# Network architecture
+network:
+  hidden_size: 256
+  num_layers: 3
+  activation: "relu"
+  use_orthogonal_init: true
+  init_gain: 1.0
+
+# PPO hyperparameters
+ppo:
+  learning_rate: 3e-4
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_epsilon: 0.2
+  value_loss_coeff: 0.5
+  entropy_coeff: 0.01
+  max_grad_norm: 0.5
+
+  # Training schedule
+  num_steps: 128  # Steps per rollout
+  update_epochs: 4  # PPO update epochs per rollout
+  batch_size: 32  # Minibatch size for updates
+
+# Learning rate scheduling
+lr_schedule:
+  type: "linear"  # "constant", "linear", "cosine"
+  decay_steps: 1000000
+  min_lr: 1e-5
+
+# Reward configuration for pure RL
+rewards:
+  # Core gameplay rewards
+  rupee_reward: 0.01
+  key_reward: 0.5
+  boss_defeat_reward: 2.0
+  death_penalty: -3.0
+
+  # Shaping rewards (more important in pure RL)
+  movement_reward: 0.001  # Small reward for movement (anti-idle)
+  exploration_reward: 0.1  # Reward for visiting new areas
+  time_penalty: -0.0001  # Small penalty per step (efficiency)
+
+  # Health-based rewards
+  health_loss_penalty: -0.1  # Per heart lost
+  health_gain_reward: 0.2   # Per heart gained
+
+  # Item collection rewards
+  item_collection_reward: 0.3
+  treasure_chest_reward: 0.5
+
+  # Progress rewards
+  dungeon_progress_reward: 1.0
+  essence_collection_reward: 5.0
+
+# Training configuration
+training:
+  total_timesteps: 2000000  # More timesteps for pure RL
+  eval_frequency: 50000
+  save_frequency: 100000
+  log_frequency: 1000
+
+  # Episode management
+  max_episode_steps: 15000  # Longer episodes for exploration
+  early_termination:
+    health_zero: true
+    stuck_threshold: 2000  # Longer stuck threshold without LLM guidance
+
+# Environment configuration
+environment:
+  frame_skip: 4
+  action_repeat: 1
+  observation_type: "vector"  # "vector", "image", "hybrid"
+
+  # State preprocessing
+  normalize_observations: true
+  clip_rewards: false
+  reward_scaling: 1.0
+
+# Planner integration - DISABLED for pure RL
+planner_integration:
+  use_planner: false  # KEY: Disable LLM integration
+  enable_visual: false  # Don't generate visual data
+  use_structured_entities: false  # Don't extract structured entities
+  auto_load_save_state: true  # Still use save states for consistent starts
+  
+  # These settings are ignored when use_planner: false
+  planner_frequency: 100
+  macro_timeout: 200
+  override_on_low_health: false
+  override_health_threshold: 0.3
+  override_on_stuck: false
+  override_stuck_threshold: 50
+
+# Exploration configuration (more important in pure RL)
+exploration:
+  epsilon_schedule:
+    initial: 0.2  # Higher initial exploration
+    final: 0.02   # Higher final exploration
+    decay_steps: 1000000
+
+  # Intrinsic motivation (helpful for pure RL)
+  use_curiosity: true
+  curiosity_coeff: 0.1
+
+  # Random action injection
+  random_action_prob: 0.1  # Higher random action rate
+
+# Logging and monitoring
+logging:
+  wandb_project: "zelda-pure-rl"
+  tensorboard_dir: "logs/tensorboard/pure_rl"
+  log_video: true
+  video_frequency: 100000
+
+  # Metrics to track (pure RL specific)
+  track_metrics:
+    - "episode_reward"
+    - "episode_length"
+    - "rupees_collected"
+    - "keys_collected"
+    - "bosses_defeated"
+    - "exploration_rate"
+    - "random_actions_taken"
+    - "avg_q_value"
+    - "policy_entropy"
+
+# Checkpointing
+checkpointing:
+  save_dir: "checkpoints/pure_rl"
+  keep_last_n: 5
+  save_optimizer: true
+
+# Evaluation
+evaluation:
+  num_episodes: 20  # More episodes for statistical significance
+  deterministic: true
+  render: false
+
+# Hardware configuration
+hardware:
+  device: "auto"  # "cpu", "cuda", "auto"
+  num_workers: 1  # For parallel environments
+  pin_memory: true

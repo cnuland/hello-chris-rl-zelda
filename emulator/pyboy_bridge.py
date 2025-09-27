@@ -183,6 +183,41 @@ class ZeldaPyBoyBridge:
 
         self.pyboy.load_state(state_data)
 
+    def get_game_state(self) -> Dict[str, Any]:
+        """Get current game state from memory addresses."""
+        if not self.pyboy:
+            return {}
+        
+        try:
+            # Get basic game state from known memory addresses
+            state = {
+                'health': self.get_memory(0xC021) // 4,  # Convert quarter-hearts to hearts
+                'max_health': self.get_memory(0xC05B) // 4,
+                'rupees': self.get_memory(0xC6A5),
+                'x_position': self.get_memory(0xC4AC),  # Player X position
+                'y_position': self.get_memory(0xC4AD),  # Player Y position
+                'screen_array': self.get_screen_array(),
+                'tile_map': self.get_tile_map()
+            }
+            return state
+        except Exception as e:
+            # Return empty state if there's an error
+            return {}
+
+    def get_screen_array(self) -> np.ndarray:
+        """Get screen as numpy array."""
+        if not self.pyboy:
+            return np.zeros((144, 160, 3), dtype=np.uint8)
+        
+        try:
+            screen = self.pyboy.screen.ndarray
+            # Convert RGBA to RGB if needed
+            if screen.shape[-1] == 4:
+                screen = screen[:, :, :3]
+            return screen
+        except Exception as e:
+            return np.zeros((144, 160, 3), dtype=np.uint8)
+
     def close(self) -> None:
         """Close emulator."""
         if self.pyboy:
