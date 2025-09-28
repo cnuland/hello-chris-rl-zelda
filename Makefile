@@ -1,227 +1,202 @@
-# Zelda-LLM-RL Local Development Makefile
+# Zelda-LLM-RL Core System Makefile
+# 
+# Supports 3 core areas:
+# 1. Headless Training - Production training runs (train_headless.py)  
+# 2. Visual Training   - Watch training live (train_visual.py)
+# 3. Visual Inference  - Watch trained model play (run_inference.py)
 
 # MLX Configuration for Qwen2.5 Model (Apple Silicon optimized)
 VLLM_MODEL := mlx-community/Qwen2.5-14B-Instruct-4bit
 VLLM_PORT := 8000
 PYTHON := python3
 
-.PHONY: help install test-local serve-local stop-local status clean visual-quick visual-train visual-checkpoint visual-test train train-pure-rl train-llm-guided train-quick train-20k train-parallel train-help
+# Training Parameters
+SESSIONS ?= 5
+EPISODES ?= 20  
+EPOCHS ?= 4
+BATCH_SIZE ?= 256
+CHECKPOINT ?= 
 
-help: ## Show available commands
-	@echo "Zelda-LLM-RL Local Development"
-	@echo "Available commands:"
-	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_-]+:.*?## / {printf "  %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+.PHONY: help install llm-serve llm-stop llm-status clean headless visual inference run-all core-help
+
+help: ## Show available commands and core system overview
+	@echo "🎮 Zelda-LLM-RL Core System"
+	@echo "==========================="
+	@echo ""
+	@echo "🚀 3 CORE AREAS:"
+	@echo "  headless      - Production training (train_headless.py)"
+	@echo "  visual        - Watch training live (train_visual.py + Web HUD)"
+	@echo "  inference     - Watch trained model play (run_inference.py + Web HUD)"
+	@echo ""
+	@echo "🧠 LLM SERVER:"
+	@echo "  llm-serve     - Start MLX Qwen2.5-14B local server"  
+	@echo "  llm-stop      - Stop MLX server"
+	@echo "  llm-status    - Check server status"
+	@echo ""
+	@echo "🛠️  UTILITIES:"
+	@echo "  install       - Install dependencies"
+	@echo "  clean         - Clean Python cache files"
+	@echo "  run-all       - Launch all 3 modes (demo)"
+	@echo "  core-help     - Detailed help for each core area"
+	@echo ""
+	@echo "Quick Start: make llm-serve && make visual"
 
 install: ## Install project dependencies
 	$(PYTHON) -m pip install -r requirements.txt
-	$(PYTHON) -m pip install vllm
+	$(PYTHON) -m pip install mlx-lm
 
-test-local: ## Deploy model locally using Apple Silicon accelerators (MLX)
-	@echo "Starting local MLX server with Apple Silicon acceleration..."
+llm-serve: ## Start MLX local LLM server (Qwen2.5-14B-Instruct-4bit)
+	@echo "🧠 Starting MLX LLM Server..."
 	@echo "Model: $(VLLM_MODEL)"
 	@echo "Port: $(VLLM_PORT)"
+	@echo "Optimized for: Apple Silicon"
+	@echo ""
+	@echo "Server will be available at: http://localhost:$(VLLM_PORT)"
+	@echo "Press Ctrl+C to stop server"
+	@echo ""
 	mlx_lm.server --model $(VLLM_MODEL) --port $(VLLM_PORT)
 
-serve-local: test-local ## Alias for test-local
+llm-stop: ## Stop MLX LLM server
+	@echo "🛑 Stopping MLX LLM server..."
+	@pkill -f "mlx_lm.server" || echo "No MLX server found"
+	@pkill -f "$(VLLM_MODEL)" || echo "No model processes found"
 
-stop-local: ## Stop local vLLM server
-	@echo "Stopping vLLM server..."
-	@pkill -f "vllm.entrypoints.api_server" || echo "No vLLM server found"
+llm-status: ## Check if MLX LLM server is running
+	@echo "🔍 Checking MLX LLM server status..."
+	@echo "Endpoint: http://localhost:$(VLLM_PORT)/v1/models"
+	@curl -s http://localhost:$(VLLM_PORT)/v1/models | jq . || echo "❌ Server not responding or jq not installed"
 
-status: ## Check if vLLM server is running
-	@echo "Checking vLLM server status..."
-	@curl -s http://localhost:$(VLLM_PORT)/v1/models | jq . || echo "Server not responding or jq not installed"
-
-clean: ## Clean Python cache files
+clean: ## Clean Python cache files and temporary data
+	@echo "🧹 Cleaning Python cache files..."
 	find . -type f -name "*.pyc" -delete
 	find . -type d -name "__pycache__" -exec rm -rf {} +
+	@echo "✅ Cache cleaned"
 
-# Visual RL Training Targets
-visual-quick: ## Quick 30-second visual demo of RL agent learning
-	@echo "🎮 Starting quick visual RL demo (30 seconds)..."
-	@echo "PyBoy window will open showing Link learning to move around"
-	$(PYTHON) watch_rl_quick.py
+# ========================================
+# 🚀 CORE AREA 1: HEADLESS TRAINING
+# ========================================
 
-visual-train: ## Full visual RL training session from zero (fresh start)
-	@echo "🤖 Starting full visual RL training session from scratch..."
-	@echo "You'll see 3 phases: Random → Learning Movement → Strategic Play"
-	@echo "PyBoy window will show Link learning over ~2000 steps"
-	$(PYTHON) watch_rl_agent.py
-
-visual-checkpoint: ## Visual test of trained RL agent from checkpoint
-	@echo "🎯 Loading and watching previously trained RL agent..."
-	@echo "You'll see more strategic behavior compared to untrained agent"
-	@echo "Demonstrates trained vs untrained performance difference"
-	$(PYTHON) watch_rl_checkpoint.py
-
-visual-test: visual-quick ## Alias for quick visual test (recommended for first try)
-
-# Visual RL Help
-visual-help: ## Show detailed visual mode help
-	@echo "🎮 Visual RL Training Mode Help"
-	@echo "================================"
+headless: ## Production headless RL training (high performance)
+	@echo "🖥️  HEADLESS TRAINING - Production Mode"
+	@echo "======================================"
+	@echo "📊 Configuration:"
+	@echo "   Sessions:     $(SESSIONS)"
+	@echo "   Episodes:     $(EPISODES)" 
+	@echo "   Epochs:       $(EPOCHS)"
+	@echo "   Batch Size:   $(BATCH_SIZE)"
+	@echo "   Mode:         Headless (no visual display)"
+	@echo "   Features:     5X LLM rewards + exploration bonuses"
 	@echo ""
-	@echo "Visual mode lets you watch Link learn to play Zelda in real-time."
-	@echo "PyBoy window opens showing the Game Boy screen with Link moving around."
-	@echo ""
-	@echo "Available visual targets:"
-	@echo "  visual-quick      - 30-second demo (recommended first try)"
-	@echo "  visual-train      - Full training from zero (~5-10 minutes)"
-	@echo "  visual-checkpoint - Watch trained agent (~3-5 minutes)"
-	@echo "  visual-test       - Same as visual-quick"
-	@echo ""
-	@echo "Performance characteristics:"
-	@echo "  • Visual mode: ~60 steps/second (watchable)"
-	@echo "  • Headless mode: ~3750 steps/second (training)"
-	@echo "  • Visual mode is 62x slower but great for debugging"
-	@echo ""
-	@echo "What you'll see:"
-	@echo "  Phase 1: Random exploration (Link moves randomly)"
-	@echo "  Phase 2: Learning movement (Link favors movement actions)"
-	@echo "  Phase 3: Strategic play (Link uses smarter decisions)"
-	@echo ""
-	@echo "Press Ctrl+C in terminal to stop visual training early."
-
-# RL Training Targets (Headless)
-TRAIN_STEPS ?= 100000
-TRAIN_OUTPUT_DIR ?= training_runs
-TRAIN_CONFIG ?=
-TRAIN_DEVICE ?= auto
-TRAIN_ENVS ?= 1
-TRAIN_EPISODE_LENGTH ?= 500
-TRAIN_UPDATE_EPOCHS ?= 4
-TRAIN_BATCH_SIZE ?= 128
-
-train: train-pure-rl ## Default training (pure RL mode, no LLM)
-
-train-pure-rl: ## Train RL agent without LLM guidance (pure RL)
-	@echo "🤖 Starting Pure RL Training (headless, high-performance)..."
-	@echo "   Mode: Pure RL (no LLM guidance)"
-	@echo "   Steps: $(TRAIN_STEPS)"
-	@echo "   Parallel Environments: $(TRAIN_ENVS)"
-	@echo "   Episode Length: $(TRAIN_EPISODE_LENGTH)"
-	@echo "   Update Epochs: $(TRAIN_UPDATE_EPOCHS)"
-	@echo "   Batch Size: $(TRAIN_BATCH_SIZE)"
-	@echo "   Output: $(TRAIN_OUTPUT_DIR)"
-	$(PYTHON) train_rl_simple.py \
-		--mode pure_rl \
-		--steps $(TRAIN_STEPS) \
-		--num-envs $(TRAIN_ENVS) \
-		--episode-length $(TRAIN_EPISODE_LENGTH) \
-		--update-epochs $(TRAIN_UPDATE_EPOCHS) \
-		--batch-size $(TRAIN_BATCH_SIZE) \
-		--output-dir $(TRAIN_OUTPUT_DIR) \
+	@echo "🚀 Starting production training run..."
+	$(PYTHON) train_headless.py \
+		--sessions $(SESSIONS) \
+		--episodes $(EPISODES) \
+		--epochs $(EPOCHS) \
+		--batch-size $(BATCH_SIZE) \
 		--verbose
 
-train-llm-guided: ## Train RL agent with LLM strategic guidance
-	@echo "🧠 Starting LLM-Guided RL Training (headless)..."
-	@echo "   Mode: LLM-Guided (hybrid approach)"
-	@echo "   Steps: $(TRAIN_STEPS)"
-	@echo "   Output: $(TRAIN_OUTPUT_DIR)"
-	@echo "   Device: $(TRAIN_DEVICE)"
-	@echo "   ⚠️  Note: Requires LLM API access"
-	$(PYTHON) train_rl.py \
-		--mode llm_guided \
-		--steps $(TRAIN_STEPS) \
-		--output-dir $(TRAIN_OUTPUT_DIR) \
-		--device $(TRAIN_DEVICE) \
-		$(if $(TRAIN_CONFIG),--config $(TRAIN_CONFIG),) \
-		--verbose
+# ========================================  
+# 🚀 CORE AREA 2: VISUAL TRAINING
+# ========================================
 
-train-quick: ## Quick training test (1k steps, pure RL)
-	@echo "⚡ Quick Training Test (1,000 steps)..."
-	@$(MAKE) train-pure-rl TRAIN_STEPS=1000
+visual: ## Visual RL training with live PyBoy + Web HUD
+	@echo "👁️  VISUAL TRAINING - Watch Training Live"
+	@echo "======================================="
+	@echo "🎮 Features:"
+	@echo "   - PyBoy emulator window (watch Link learn)"
+	@echo "   - Web HUD at http://localhost:8086" 
+	@echo "   - Real-time LLM decisions and training stats"
+	@echo "   - Single episode/epoch for demonstration"
+	@echo "   - 5X LLM emphasis system active"
+	@echo ""
+	@echo "🚀 Starting visual training..."
+	@echo "📱 Web HUD will open in your browser"
+	@echo "🎮 PyBoy window will show the game"
+	$(PYTHON) train_visual.py
 
-train-20k: ## 20k step training with 2 parallel environments
-	@echo "🚀 20k Step Parallel Training (2 environments)..."
-	@$(MAKE) train-pure-rl TRAIN_STEPS=20000 TRAIN_ENVS=2 TRAIN_EPISODE_LENGTH=750 TRAIN_UPDATE_EPOCHS=6
+# ========================================
+# 🚀 CORE AREA 3: VISUAL INFERENCE  
+# ========================================
 
-train-parallel: ## Parallel training with multiple environments
-	@echo "🔀 Parallel Training Test (multiple environments)..."
-	@$(MAKE) train-pure-rl TRAIN_ENVS=2
+inference: ## Load trained model and watch it play (with PyBoy + Web HUD)
+	@echo "🎯 VISUAL INFERENCE - Watch Trained Model Play"
+	@echo "============================================="
+	@echo "🧠 Features:"
+	@echo "   - Load pre-trained checkpoint"
+	@echo "   - PyBoy emulator window (watch trained AI play)"
+	@echo "   - Web HUD at http://localhost:8086"
+	@echo "   - Real-time LLM strategic decisions" 
+	@echo "   - NO training updates (inference only)"
+	@echo ""
+	@if [ -z "$(CHECKPOINT)" ]; then \
+		echo "❌ ERROR: CHECKPOINT parameter required"; \
+		echo "Usage: make inference CHECKPOINT=path/to/model.pkl"; \
+		exit 1; \
+	fi
+	@echo "📂 Checkpoint: $(CHECKPOINT)"
+	@echo "🚀 Starting inference mode..."
+	$(PYTHON) run_inference.py --checkpoint $(CHECKPOINT)
 
-# Training with custom parameters
-train-custom: ## Custom training (use TRAIN_* variables)
-	@echo "🎯 Custom Training Configuration:"
-	@echo "   Steps: $(TRAIN_STEPS)"
-	@echo "   Config: $(TRAIN_CONFIG)"
-	@echo "   Output: $(TRAIN_OUTPUT_DIR)"
-	@echo "   Device: $(TRAIN_DEVICE)"
-	$(PYTHON) train_rl.py \
-		--mode pure_rl \
-		--steps $(TRAIN_STEPS) \
-		--output-dir $(TRAIN_OUTPUT_DIR) \
-		--device $(TRAIN_DEVICE) \
-		$(if $(TRAIN_CONFIG),--config $(TRAIN_CONFIG),) \
-		--verbose
+# ========================================
+# 🚀 UTILITY COMMANDS
+# ========================================
 
-# Training configuration validation
-train-config: ## Show training configuration without running
-	@echo "🔍 Training Configuration Preview:"
-	$(PYTHON) train_rl.py \
-		--mode pure_rl \
-		--steps $(TRAIN_STEPS) \
-		--dry-run
+run-all: ## Demo all 3 core areas (requires checkpoint)
+	@echo "🎭 DEMO: All 3 Core Areas"
+	@echo "========================"
+	@echo "This will demonstrate all 3 modes in sequence:"
+	@echo "1. Quick headless training (2 sessions)"
+	@echo "2. Visual training demo"
+	@echo "3. Inference with generated checkpoint"
+	@echo ""
+	@echo "⚠️  This is a demo mode - press Ctrl+C to stop any stage"
+	@echo ""
+	@read -p "Press Enter to start demo..."
+	@$(MAKE) headless SESSIONS=2 EPISODES=5
+	@$(MAKE) visual
+	@echo "Note: inference requires a checkpoint from training"
 
-train-config-llm: ## Show LLM-guided training configuration
-	@echo "🔍 LLM-Guided Training Configuration Preview:"
-	$(PYTHON) train_rl.py \
-		--mode llm_guided \
-		--steps $(TRAIN_STEPS) \
-		--dry-run
-
-# Training help
-train-help: ## Show detailed training help and examples
-	@echo "🎯 RL Training Help"
-	@echo "=================="
+core-help: ## Detailed help for each core area
+	@echo "🎮 CORE SYSTEM DETAILED HELP"
+	@echo "============================"
 	@echo ""
-	@echo "High-performance headless training for Zelda RL agents."
-	@echo "All training runs in headless mode (no PyBoy window) for maximum speed."
+	@echo "🖥️  HEADLESS TRAINING (make headless)"
+	@echo "   Purpose: Production training runs"
+	@echo "   Output:  training_runs/ directory with logs and checkpoints"
+	@echo "   Speed:   ~3000+ steps/second (maximum performance)"
+	@echo "   Usage:   make headless SESSIONS=10 EPISODES=50 EPOCHS=6"
 	@echo ""
-	@echo "Basic Training Commands:"
-	@echo "  make train              - Default pure RL training (100k steps)"
-	@echo "  make train-pure-rl      - Pure RL without LLM guidance"
-	@echo "  make train-llm-guided   - Hybrid RL with LLM strategic guidance"
-	@echo "  make train-quick        - Quick test (1k steps)"
-	@echo "  make train-20k          - 20k step parallel training (2 envs)"
-	@echo "  make train-parallel     - Parallel training test (2 envs)"
+	@echo "👁️  VISUAL TRAINING (make visual)"  
+	@echo "   Purpose: Watch training in real-time"
+	@echo "   Windows: PyBoy game window + Web HUD (browser)"
+	@echo "   Speed:   ~15-30 steps/second (watchable)"
+	@echo "   Usage:   make visual"
 	@echo ""
-	@echo "Configuration Commands:"
-	@echo "  make train-config       - Preview pure RL training config"
-	@echo "  make train-config-llm   - Preview LLM-guided training config"
+	@echo "🎯 VISUAL INFERENCE (make inference)"
+	@echo "   Purpose: Watch trained model play"
+	@echo "   Windows: PyBoy game window + Web HUD (browser)" 
+	@echo "   Speed:   Real-time gameplay"
+	@echo "   Usage:   make inference CHECKPOINT=model.pkl"
 	@echo ""
-	@echo "Custom Training Examples:"
-	@echo "  # 500k steps with custom config"
-	@echo "  make train-pure-rl TRAIN_STEPS=500000 TRAIN_CONFIG=my_config.yaml"
+	@echo "🧠 LLM SERVER COMMANDS:"
+	@echo "   make llm-serve   - Start MLX Qwen2.5-14B server"
+	@echo "   make llm-status  - Check if server is running"
+	@echo "   make llm-stop    - Stop the server"
 	@echo ""
-	@echo "  # GPU training with custom output directory"
-	@echo "  make train-llm-guided TRAIN_DEVICE=cuda TRAIN_OUTPUT_DIR=gpu_runs"
+	@echo "📊 TRAINING PARAMETERS (customize with VARIABLE=value):"
+	@echo "   SESSIONS      - Number of training sessions (default: $(SESSIONS))"
+	@echo "   EPISODES      - Episodes per session (default: $(EPISODES))"
+	@echo "   EPOCHS        - Training epochs (default: $(EPOCHS))"
+	@echo "   BATCH_SIZE    - Batch size for updates (default: $(BATCH_SIZE))" 
+	@echo "   CHECKPOINT    - Path to model checkpoint (for inference)"
 	@echo ""
-	@echo "  # Quick 1k step test"
-	@echo "  make train-pure-rl TRAIN_STEPS=1000"
+	@echo "🚀 QUICK START:"
+	@echo "   1. make install           # Install dependencies"
+	@echo "   2. make llm-serve         # Start LLM server (new terminal)"
+	@echo "   3. make visual            # Watch training live"
 	@echo ""
-	@echo "Training Variables (customize with VARIABLE=value):"
-	@echo "  TRAIN_STEPS         - Number of training steps (default: 100000)"
-	@echo "  TRAIN_ENVS          - Parallel environments (default: 1)"
-	@echo "  TRAIN_EPISODE_LENGTH - Max steps per episode (default: 500)"
-	@echo "  TRAIN_UPDATE_EPOCHS  - Optimization epochs per batch (default: 4)"
-	@echo "  TRAIN_BATCH_SIZE     - Batch size for optimization (default: 128)"
-	@echo "  TRAIN_CONFIG         - Path to custom YAML config file"
-	@echo "  TRAIN_OUTPUT_DIR     - Output directory (default: training_runs)"
-	@echo "  TRAIN_DEVICE         - Training device: cpu/cuda/auto (default: auto)"
-	@echo ""
-	@echo "Performance Comparison:"
-	@echo "  • Pure RL:       Faster training, longer to learn, ~3750 steps/sec"
-	@echo "  • LLM-Guided:    Slower training, faster learning, ~60-200 steps/sec"
-	@echo "  • Headless mode: Maximum performance (no visual overhead)"
-	@echo ""
-	@echo "Training Output:"
-	@echo "  • Logs:          training_runs/{mode}_{timestamp}/training.log"
-	@echo "  • Metrics:       training_runs/{mode}_{timestamp}/metrics.json"
-	@echo "  • Checkpoints:   training_runs/{mode}_{timestamp}/checkpoint_*.json"
-	@echo "  • Config:        training_runs/{mode}_{timestamp}/config.yaml"
-	@echo ""
-	@echo "Monitoring Training:"
-	@echo "  • Watch log file:     tail -f training_runs/*/training.log"
-	@echo "  • Check progress:     grep 'Episode' training_runs/*/training.log"
-	@echo "  • Stop training:      Press Ctrl+C in terminal"
+	@echo "📁 OUTPUT STRUCTURE:"
+	@echo "   training_runs/           # All training outputs"
+	@echo "   ├── session_*/           # Individual session data"
+	@echo "   ├── logs/                # Training logs"
+	@echo "   └── checkpoints/         # Model checkpoints"

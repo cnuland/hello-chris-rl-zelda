@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Hybrid RL-LLM with PyBoy Visual + Web HUD
+Trained Model Inference with PyBoy Visual + Web HUD
 
-Runs the complete system:
+Runs inference with a trained model:
 - PyBoy emulator in visual mode 
-- Real RL training with LLM guidance
+- Trained RL model playing the game (NO training)
 - Web HUD showing live LLM decisions
 - MLX local server integration
 """
@@ -293,9 +293,9 @@ Respond with JSON: {"action": "EXPLORE|MOVE_TO|TALK_TO|ATTACK|USE_ITEM", "target
             "phase": "error"
         }
 
-def run_hybrid_training():
-    """Run the hybrid RL training with PyBoy visual and LLM guidance."""
-    print("🎮 Starting hybrid RL training with PyBoy visual...")
+def run_hybrid_inference():
+    """Run the hybrid RL inference with PyBoy visual and LLM guidance."""
+    print("🎮 Starting hybrid RL INFERENCE with PyBoy visual...")
     
     add_activity("🚀 Initializing hybrid system", "success")
     add_activity("🔗 MLX Qwen2.5-14B ready", "success")
@@ -423,13 +423,14 @@ def main():
     
     # Give user time to see HUD
     print("📱 HUD should open in browser...")
-    print("🎮 Starting PyBoy + RL training with ULTRA-FREQUENT LLM calls...")
+    print("🎮 Starting PyBoy + RL INFERENCE with ULTRA-FREQUENT LLM calls...")
     print("⚡ MLX Caching enabled - LLM calls every 30 steps!")
     print("🚀 Expected ~65 LLM calls in 5 minutes (hyper-responsive)")
+    print("🧠 INFERENCE MODE: Using trained model (NO training updates)")
     time.sleep(3)
     
-    # Start the hybrid training
-    run_hybrid_training()
+    # Start the hybrid inference
+    run_hybrid_inference()
     
     print("\n✅ Session complete! HUD remains active.")
     print("Press Ctrl+C to exit.")

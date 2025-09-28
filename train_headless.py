@@ -1,7 +1,15 @@
 #!/usr/bin/env python3
 """
-Simple Zelda RL Training Script
-Basic headless training with minimal dependencies - working implementation.
+CORE HEADLESS RL TRAINING - Production Training Script
+
+This is the primary training script for production runs:
+- Multi-environment parallel training for maximum data efficiency
+- Configurable sessions, episodes, epochs, batch size
+- Enhanced exploration rewards + LLM guidance emphasis (5X multipliers)  
+- PyBoy integration with save state loading
+- Comprehensive logging and performance tracking
+- HEADLESS ONLY - no visual display for maximum performance
+- Smart exploration reward system with LLM alignment bonuses
 """
 
 import os

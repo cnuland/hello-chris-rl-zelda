@@ -1,165 +1,332 @@
-# Zelda-LLM-RL Project Configuration
+# 🎮 Zelda-LLM-RL Project Configuration
 # Hybrid AI System for The Legend of Zelda: Oracle of Seasons
+# Local MLX + RL Training with Web HUD Visualization
 
-## Project Overview
-This project implements a sophisticated hybrid AI agent that plays The Legend of Zelda: Oracle of Seasons using a two-tier architecture:
-- **High-Level Planner**: 70B LLM (Llama 3.1) served via vLLM on KServe for strategic decision making
-- **Low-Level Controller**: PPO reinforcement learning agent for precise frame-level control
-- **Game Environment**: PyBoy emulator with RAM/tile-based state observation (not pixel-based)
+## 🚀 **3 CORE AREAS**
 
-## Architecture Components
+This project is organized around **3 primary use cases**:
 
-### Core Directories
-- `agents/`: LLM planner and RL controller implementations
-- `emulator/`: PyBoy integration and Zelda environment wrapper
-- `observation/`: State encoding and RAM address mappings
-- `training/`: PPO training scripts and GRPO optimization
-- `configs/`: YAML configuration files for training and deployment
-- `ops/openshift/`: Kubernetes/OpenShift deployment manifests
-- `notebooks/`: Jupyter notebooks for experimentation and training
+### 1. 🖥️ **HEADLESS TRAINING** - Production Training Runs
+- **File**: `train_headless.py`
+- **Command**: `make headless`
+- **Purpose**: High-performance training for model development
+- **Features**: Multi-environment parallel training, 5X LLM reward emphasis, exploration bonuses
+- **Speed**: ~3000+ steps/second (maximum performance)
+- **Usage**: `make headless SESSIONS=10 EPISODES=50 EPOCHS=6`
 
-### Key Technologies
-- **Reinforcement Learning**: PPO via CleanRL, Gymnasium environments
-- **Large Language Models**: vLLM serving, GRPO preference optimization
+### 2. 👁️ **VISUAL TRAINING** - Watch Training Live
+- **File**: `train_visual.py`
+- **Command**: `make visual`
+- **Purpose**: Single episode training with live visualization
+- **Features**: PyBoy emulator window + Web HUD, real-time LLM decisions, training progress
+- **Speed**: ~15-30 steps/second (watchable)
+- **Web HUD**: `http://localhost:8086`
+
+### 3. 🎯 **VISUAL INFERENCE** - Watch Trained Model Play
+- **File**: `run_inference.py`
+- **Command**: `make inference CHECKPOINT=model.pkl`
+- **Purpose**: Load trained checkpoint and watch AI play (NO training updates)
+- **Features**: PyBoy emulator window + Web HUD, strategic decision visualization
+- **Speed**: Real-time gameplay
+
+---
+
+## 🧠 **Architecture Overview**
+
+### **Core Components**
+- **LLM Planner**: MLX Qwen2.5-14B-Instruct-4bit (local Apple Silicon)
+- **RL Controller**: PPO via Gymnasium with smart arbitration
+- **Game Interface**: PyBoy emulator with direct RAM/memory access
+- **State Encoding**: Structured JSON from game memory (not pixels)
+- **Reward System**: 5X multiplier for LLM-aligned actions + exploration bonuses
+
+### **Key Technologies**
+- **Local LLM**: MLX framework for Apple Silicon optimization
+- **Reinforcement Learning**: PPO via Gymnasium environments
 - **Game Emulation**: PyBoy for Game Boy emulation
-- **Cloud Deployment**: OpenShift AI, KServe, Kubernetes
-- **ML Frameworks**: PyTorch, Transformers, TRL
-- **Monitoring**: Weights & Biases, TensorBoard
+- **Web Visualization**: Flask + WebSocket HUD
+- **ML Frameworks**: PyTorch, NumPy, MLX
 
-## Development Workflow
+---
 
-### Environment Setup
+## 🛠️ **Quick Start Commands**
+
+### **Core Operations**
 ```bash
-# Install dependencies
-pip install -r requirements.txt
+# 1. Install dependencies
+make install
 
-# Install in development mode
-pip install -e .
+# 2. Start local MLX LLM server (Terminal 1)
+make llm-serve
+
+# 3. Run visual training (Terminal 2) - RECOMMENDED FIRST TRY
+make visual
+
+# 4. Production headless training
+make headless
+
+# 5. Test trained model (requires checkpoint)
+make inference CHECKPOINT=training_runs/session_5/model.pkl
 ```
 
-### Training Commands
+### **LLM Server Management**
 ```bash
-# Run PPO baseline training
-python training/run_cleanrl.py --rom-path roms/zelda_oos.gb
-
-# Train planner with preference optimization
-python training/run_grpo_llm.py
+make llm-serve      # Start MLX Qwen2.5-14B local server
+make llm-status     # Check if server is running  
+make llm-stop       # Stop the server
 ```
 
-### Deployment
+### **Utilities**
 ```bash
-# Deploy LLM planner to OpenShift
-oc apply -f ops/openshift/kserve/zelda-planner-70b.yaml
+make clean          # Clean Python cache files
+make run-all        # Demo all 3 modes
+make core-help      # Detailed help for each area
 ```
 
-## Code Style Guidelines
+---
 
-### Python Standards
+## 📁 **Project Structure**
+
+### **Core Files**
+```
+├── train_headless.py         # Core Area 1: Production training
+├── train_visual.py           # Core Area 2: Visual training
+├── run_inference.py          # Core Area 3: Visual inference
+├── CORE_SYSTEM.md           # System documentation
+├── LLM_EMPHASIS_SYSTEM.md   # 5X reward system docs
+└── Makefile                 # All core commands
+```
+
+### **Core Directories**
+```
+├── agents/                  # RL controller + LLM planner
+│   ├── controller.py        # PPO with smart arbitration
+│   ├── local_llm_planner.py # MLX Qwen2.5 integration
+│   └── macro_actions.py     # LLM → RL action bridge
+├── emulator/                # PyBoy integration
+│   ├── pyboy_bridge.py      # Game state access
+│   └── zelda_env_configurable.py # Gymnasium environment
+├── observation/             # State encoding
+│   ├── state_encoder.py     # Game state → structured JSON
+│   ├── visual_encoder.py    # Screen processing (if needed)
+│   └── ram_maps/           
+│       └── zelda_addresses.py # Memory address mappings
+├── configs/                 # Configuration files
+├── tests/                   # Test infrastructure
+├── training_runs/           # Training outputs and checkpoints
+└── roms/                   # Game ROM and save states
+```
+
+---
+
+## 🌟 **Key Features**
+
+### **🧠 LLM Emphasis System (5X Rewards)**
+- **Normal Action**: +10 points for room discovery
+- **LLM-Aligned Action**: **+50 points** (5x multiplier!)
+- **Strategic Bonus**: +2 points/step for following LLM guidance
+- **Goal Completion**: +50 bonus points
+- **Implementation**: `emulator/zelda_env_configurable.py` - `_calculate_llm_guidance_reward()`
+
+### **🔄 Smart Arbitration**
+- **Context-aware triggers**: New rooms, low health, stuck situations, NPC interactions
+- **Adaptive frequency**: 10-50 step intervals based on performance
+- **MLX caching**: 1.3-second response times with local inference
+- **Implementation**: `agents/controller.py` - `SmartArbitrationTracker`
+
+### **📊 Enhanced Reward System**
+- **New Room Discovery**: 10 points (50 with LLM alignment)
+- **Dungeon Entry**: 25 points (125 with LLM alignment)
+- **NPC Interaction**: 15 points (75 with LLM alignment)
+- **Continuous Dungeon Presence**: 5 points/step
+
+### **📱 Web HUD Visualization**
+- **Real-time display**: Browser dashboard at `http://localhost:8086`
+- **LLM commands**: Live reasoning and strategic decisions
+- **Training metrics**: Reward tracking, episode progress
+- **Arbitration stats**: Performance and trigger analysis
+
+---
+
+## 💻 **Development Workflow**
+
+### **Environment Setup**
+```bash
+# Clone and install
+git clone <repo-url>
+cd zelda-rl-llm
+make install
+
+# Place ROM (legally obtained)
+# roms/zelda_oracle_of_seasons.gbc
+# roms/zelda_oracle_of_seasons.gbc.state
+```
+
+### **Development Commands**
+```bash
+# Quick visual development
+make visual
+
+# Production training
+make headless SESSIONS=5 EPISODES=20
+
+# Test specific checkpoint
+make inference CHECKPOINT=path/to/model.pkl
+
+# Custom training parameters
+make headless SESSIONS=20 EPISODES=100 EPOCHS=8 BATCH_SIZE=512
+```
+
+---
+
+## 🧪 **Testing Strategy**
+
+### **Unit Tests** (`tests/` directory)
+- `test_simple_env.py`: Basic emulator functionality
+- `test_advanced_env.py`: State encoding and LLM integration
+- `test_local_env.py`: End-to-end pipeline validation
+
+### **Integration Tests**
+- Test MLX LLM connectivity: `make llm-status`
+- Validate game state extraction: `tests/test_visual_integration.py`
+- Test full training pipeline: `make visual` (short demo)
+
+### **Manual Testing**
+```bash
+# Test all components
+make run-all
+
+# Test specific area
+make visual          # Visual training test
+make headless SESSIONS=1 EPISODES=2  # Quick headless test
+```
+
+---
+
+## 🛠️ **Code Conventions**
+
+### **Python Standards**
 - Follow PEP 8 style guidelines
-- Use type hints for all function signatures
+- Use type hints for all function signatures  
 - Document classes and methods with comprehensive docstrings
 - Prefer dataclasses for configuration objects
-- Use async/await for I/O operations (LLM calls, API requests)
 
-### ML/RL Specific Conventions
-- Normalize observations to [0, 1] range in state encoders
+### **ML/RL Specific**
+- Normalize observations in `observation/state_encoder.py`
+- Implement proper checkpointing in training scripts
+- Log comprehensive metrics for monitoring
 - Use proper gradient clipping and learning rate scheduling
-- Implement proper checkpointing for long training runs
-- Log comprehensive metrics for training monitoring
 
-### Error Handling
-- Use proper exception handling for emulator operations
-- Implement fallback behaviors for LLM failures
-- Graceful degradation when components are unavailable
+### **Game-Specific**
+- Reference RAM mappings in `observation/ram_maps/zelda_addresses.py`
+- Consider game mechanics: seasons, dungeons, item collection
+- Handle save state loading in `emulator/pyboy_bridge.py`
 
-## AI Assistant Instructions
+---
 
-When working with this codebase, please:
+## 🔧 **Important Files to Understand**
 
-1. **Understand the Hybrid Architecture**: This is not just an RL project - it combines symbolic reasoning (LLM) with continuous control (RL). Consider both components when making changes.
+### **Core Implementation**
+- `emulator/zelda_env_configurable.py`: Main Gymnasium environment
+- `agents/controller.py`: PPO agent with smart arbitration
+- `agents/local_llm_planner.py`: MLX Qwen2.5 integration
+- `observation/state_encoder.py`: Game state → structured JSON
 
-2. **State Representation**: The project uses RAM/tile data, not visual processing. When modifying observation spaces, work with structured data in `observation/state_encoder.py`.
-
-3. **Macro Actions**: The bridge between LLM planning and RL control happens through macro actions in `agents/macro_actions.py`. These convert high-level commands to primitive button sequences.
-
-4. **Cloud-Native Design**: This project is designed for OpenShift AI deployment. Consider scalability and containerization when suggesting modifications.
-
-5. **Game-Specific Knowledge**: When working on Zelda-specific logic, reference the RAM mappings in `observation/ram_maps/zelda_addresses.py` and consider game mechanics like seasons, dungeons, and item collection.
-
-6. **Training Considerations**: Long training runs are expected. Ensure proper checkpointing, logging, and resource management in training code.
-
-## Important Files to Understand
-
-### Core Implementation
-- `emulator/zelda_env.py`: Gymnasium environment wrapper
-- `agents/planner.py`: LLM planner client with vLLM integration
-- `agents/controller.py`: PPO agent with macro action support
-- `observation/state_encoder.py`: Converts game state for RL and LLM
-
-### Configuration
+### **Configuration**
 - `configs/controller_ppo.yaml`: PPO training hyperparameters
+- `configs/controller_ppo_mlx_llm.yaml`: MLX-optimized config
 - `configs/planner_prompt.yaml`: LLM system prompts
 - `configs/env.yaml`: Environment settings
 
-### Deployment
-- `ops/openshift/kserve/zelda-planner-70b.yaml`: LLM service deployment
-- `requirements.txt`: Python dependencies
-- `setup.py`: Package configuration
+### **Documentation**
+- `CORE_SYSTEM.md`: System overview and usage
+- `LLM_EMPHASIS_SYSTEM.md`: 5X reward system details
+- `README.md`: Quick start guide
 
-## Testing Strategy
+---
 
-### Unit Tests
-- Test state encoding/decoding functions
-- Validate macro action expansions
-- Test reward calculation logic
+## 🐛 **Debugging Tips**
 
-### Integration Tests  
-- Test emulator environment functionality
-- Validate LLM planner responses
-- Test full training pipeline
+### **Common Issues**
+- **MLX server not responding**: Check `make llm-status`, restart with `make llm-serve`
+- **PyBoy crashes**: Verify ROM path and save state files in `roms/`
+- **Training instability**: Check reward scaling in environment config
+- **Web HUD not loading**: Ensure port 8086 is free, check browser at `localhost:8086`
 
-### Performance Tests
-- Benchmark state encoding performance
-- Test LLM response times
-- Validate training throughput
+### **Logging**
+- Training logs: `training_runs/*/training.log`
+- Check episode progress: `grep 'Episode' training_runs/*/training.log`
+- Watch live logs: `tail -f training_runs/*/training.log`
 
-## Debugging Tips
+### **Performance Monitoring**
+- Visual mode: ~15-30 steps/second (normal)
+- Headless mode: ~3000+ steps/second (expected)
+- MLX response: ~1.3 seconds/call (cached)
 
-### Common Issues
-- **Emulator crashes**: Check ROM file path and PyBoy compatibility
-- **LLM timeouts**: Verify KServe deployment and network connectivity
-- **Training instability**: Check hyperparameters and reward scaling
-- **Memory issues**: Monitor GPU memory usage during training
+---
 
-### Logging
-- Use structured logging with appropriate levels
-- Log key metrics at regular intervals
-- Include state information in debug logs
+## 🔐 **Security & Requirements**
 
-## ROM Requirements
+### **ROM Requirements**
 - Place legally obtained Oracle of Seasons ROM in `roms/` directory
-- File should be named consistently in configuration files
-- Project does not distribute ROM files
+- Required files:
+  - `roms/zelda_oracle_of_seasons.gbc` (ROM file)
+  - `roms/zelda_oracle_of_seasons.gbc.state` (save state, post-cutscenes)
 
-## Security Considerations
-- LLM API tokens should be stored as Kubernetes secrets
-- Use proper RBAC for OpenShift deployments
-- Secure model storage with appropriate access controls
+### **System Requirements**
+- **Python 3.11+**
+- **Apple Silicon** (for MLX optimization) or compatible system
+- **MLX Framework**: For local LLM inference
+- **Web Browser**: For HUD visualization
+- **Free Ports**: 8000 (MLX), 8086 (HUD)
 
-## Performance Expectations
-- Training typically requires GPU resources
-- LLM inference needs significant memory (70B model)
-- Emulator runs at 60 FPS with frame skip
-- Full training runs may take several hours to days
+---
 
-## Contribution Guidelines
-- Test changes with both mock and real LLM planners
-- Ensure compatibility with OpenShift AI environment
-- Document new macro actions and state features
-- Update configuration files when adding new parameters
+## 🤝 **AI Assistant Instructions**
 
-This project represents cutting-edge research in hybrid AI systems combining symbolic reasoning with continuous control in a complex game environment.
+When working with this codebase:
 
+1. **Understand the 3 Core Areas**: Each serves a different purpose (headless training, visual training, visual inference). Don't mix their concerns.
 
-# Tests
-All test scripts should be created in a /tmp folder and deleted after being run
+2. **Hybrid Architecture**: This combines symbolic reasoning (LLM) with continuous control (RL). The 5X reward system is crucial for alignment.
+
+3. **Local MLX Focus**: This uses local Apple Silicon optimization, not cloud deployment. Performance is key.
+
+4. **State Representation**: Uses RAM/memory data, not pixels. Work with structured JSON in `observation/state_encoder.py`.
+
+5. **Web HUD Integration**: Visual modes include browser-based HUD. Consider both PyBoy window and web interface.
+
+6. **Smart Arbitration**: LLM calls are context-aware and adaptive. Understand the triggers in `agents/controller.py`.
+
+---
+
+## 📊 **Performance Expectations**
+
+- **Headless Training**: 3000+ steps/second, hours for full training
+- **Visual Training**: 15-30 steps/second, minutes for demo
+- **Visual Inference**: Real-time gameplay speed
+- **MLX LLM**: 1.3-second response with caching
+- **Memory Usage**: ~8GB for MLX model + training
+
+---
+
+## 🎯 **Quick Reference**
+
+### **Essential Commands**
+```bash
+make visual          # Start here - watch training live
+make headless        # Production training
+make llm-serve       # Start LLM (separate terminal)
+make core-help       # Detailed help
+```
+
+### **Configuration Variables**
+```bash
+SESSIONS=5           # Number of training sessions
+EPISODES=20          # Episodes per session  
+EPOCHS=4             # Training epochs
+BATCH_SIZE=256       # Batch size
+CHECKPOINT=path.pkl  # Model checkpoint path
+```
+
+This project demonstrates cutting-edge hybrid AI combining LLM strategic reasoning with RL tactical execution, optimized for local Apple Silicon deployment with real-time visualization.
