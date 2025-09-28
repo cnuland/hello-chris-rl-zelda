@@ -48,6 +48,7 @@ class SmartArbitrationTracker:
         self.last_position = (0, 0)
         self.last_room = 0
         self.rooms_discovered_this_episode = set()
+        self.last_triggers = []  # Store triggers from last LLM call
         
     def should_call_llm(self, step_count: int, game_state: Dict[str, Any], 
                        macro_complete: bool = False) -> Tuple[bool, List[ArbitrationTrigger]]:
@@ -88,6 +89,10 @@ class SmartArbitrationTracker:
             ArbitrationTrigger.TIME_INTERVAL not in triggers):
             triggers.append(ArbitrationTrigger.FORCED_CONSULTATION)
             
+        # Store triggers for HUD display
+        if len(triggers) > 0:
+            self.last_triggers = triggers
+        
         return len(triggers) > 0, triggers
     
     def _calculate_adaptive_frequency(self) -> int:
@@ -163,6 +168,25 @@ class SmartArbitrationTracker:
     def record_arbitration_success(self):
         """Record a successful arbitration result."""
         self.successful_arbitrations += 1
+    
+    @property
+    def total_calls(self) -> int:
+        """Get total arbitration calls made."""
+        return self.total_arbitrations
+    
+    @property
+    def success_rate(self) -> float:
+        """Get success rate of arbitrations."""
+        if self.total_arbitrations == 0:
+            return 0.0
+        return self.successful_arbitrations / self.total_arbitrations
+    
+    @property 
+    def triggered_contexts(self) -> set:
+        """Get set of contexts that have triggered LLM calls."""
+        # This is a simplified version - in a full implementation,
+        # we'd track all unique triggers used during the episode
+        return {trigger.value for trigger in self.last_triggers}
         
     def get_arbitration_stats(self) -> Dict[str, float]:
         """Get current arbitration performance statistics."""

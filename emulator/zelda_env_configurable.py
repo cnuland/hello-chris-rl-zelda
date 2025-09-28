@@ -129,6 +129,12 @@ class ZeldaConfigurableEnvironment(gym.Env):
         self.visited_dungeons = set()  # Track dungeons discovered
         self.last_dialogue_state = 0  # Track NPC dialogue interactions
         self.last_room_id = None  # Track room transitions
+        
+        # LLM guidance tracking - MASSIVE EMPHASIS SYSTEM
+        self.last_llm_suggestion = None  # Store latest LLM guidance
+        self.steps_since_llm_call = 0    # Count steps since last LLM call
+        self.llm_aligned_actions = 0     # Count actions that follow LLM guidance
+        self.total_actions = 0           # Total actions for alignment rate
 
     def _get_default_config(self) -> Dict[str, Any]:
         """Get default configuration for pure RL mode."""
@@ -156,7 +162,13 @@ class ZeldaConfigurableEnvironment(gym.Env):
                 'room_discovery_reward': 10.0,      # Big bonus for new areas
                 'dungeon_discovery_reward': 25.0,   # Massive bonus for dungeon entry
                 'dungeon_bonus': 5.0,               # Continuous bonus while in dungeon
-                'npc_interaction_reward': 15.0      # Big bonus for talking to NPCs
+                'npc_interaction_reward': 15.0,     # Big bonus for talking to NPCs
+                
+                # LLM GUIDANCE REWARDS - MASSIVE EMPHASIS FOR FOLLOWING AI SUGGESTIONS!
+                'llm_guidance_multiplier': 5.0,     # Multiply normal rewards by 5x when following LLM
+                'llm_strategic_bonus': 2.0,         # Continuous bonus for following LLM direction
+                'llm_directional_bonus': 1.0,       # Bonus for moving in LLM-suggested direction
+                'llm_completion_bonus': 50.0        # HUGE bonus for completing LLM macro goals
             }
         }
     
@@ -312,11 +324,104 @@ class ZeldaConfigurableEnvironment(gym.Env):
                 self.last_dialogue_state = dialogue_state
                 self.last_room_id = current_room
                 
+                # D) LLM GUIDANCE REWARDS - MASSIVE EMPHASIS!
+                if hasattr(self, 'last_llm_suggestion') and self.last_llm_suggestion:
+                    llm_bonus = self._calculate_llm_guidance_reward(current_room, dialogue_state, dungeon_floor)
+                    total_reward += llm_bonus
+                    
         except Exception as e:
             # If memory access fails, just use base rewards
             pass
         
         return total_reward
+
+    def _calculate_llm_guidance_reward(self, current_room: int, dialogue_state: int, dungeon_floor: int) -> float:
+        """Calculate MASSIVE reward bonuses for following LLM guidance."""
+        if not self.last_llm_suggestion:
+            return 0.0
+            
+        reward_config = self.config.get('rewards', {})
+        llm_bonus = 0.0
+        
+        # Get LLM suggestion details
+        llm_action = self.last_llm_suggestion.get('action', '').upper()
+        llm_target = self.last_llm_suggestion.get('target', '').lower()
+        llm_reasoning = self.last_llm_suggestion.get('reasoning', '').lower()
+        
+        # ULTRA-HIGH REWARDS FOR LLM ALIGNMENT
+        base_llm_multiplier = reward_config.get('llm_guidance_multiplier', 5.0)  # 5x normal rewards!
+        
+        # 1) EXPLORATION ALIGNMENT - If LLM said explore and we found new room
+        if 'explore' in llm_action and current_room not in self.visited_rooms:
+            exploration_bonus = reward_config.get('room_discovery_reward', 10.0) * base_llm_multiplier
+            llm_bonus += exploration_bonus
+            print(f"🧠 LLM EXPLORATION SUCCESS! Found new room as suggested (+{exploration_bonus:.1f})")
+            
+        # 2) DUNGEON ALIGNMENT - If LLM suggested dungeon and we entered one
+        if any(word in llm_action for word in ['DUNGEON', 'ENTER']) and dungeon_floor > 0:
+            dungeon_bonus = reward_config.get('dungeon_discovery_reward', 25.0) * base_llm_multiplier
+            llm_bonus += dungeon_bonus
+            print(f"🧠 LLM DUNGEON SUCCESS! Entered dungeon as suggested (+{dungeon_bonus:.1f})")
+            
+        # 3) SOCIAL ALIGNMENT - If LLM suggested talking and dialogue activated
+        if any(word in llm_action for word in ['TALK', 'NPC']) and dialogue_state > self.last_dialogue_state:
+            social_bonus = reward_config.get('npc_interaction_reward', 15.0) * base_llm_multiplier  
+            llm_bonus += social_bonus
+            print(f"🧠 LLM SOCIAL SUCCESS! Talked to NPC as suggested (+{social_bonus:.1f})")
+            
+        # 4) STRATEGIC ALIGNMENT - Continuous bonus for following LLM direction
+        if self.steps_since_llm_call < 100:  # Within 100 steps of LLM call
+            strategic_bonus = reward_config.get('llm_strategic_bonus', 2.0)
+            llm_bonus += strategic_bonus
+            
+        # 5) DIRECTIONAL ALIGNMENT - Reward for moving in LLM-suggested direction
+        if any(direction in llm_reasoning for direction in ['north', 'south', 'east', 'west', 'up', 'down', 'left', 'right']):
+            directional_bonus = reward_config.get('llm_directional_bonus', 1.0)
+            llm_bonus += directional_bonus
+            
+        # 6) COMPLETION BONUS - Massive reward for completing LLM macro goals
+        if self._check_llm_goal_completion(llm_action, current_room, dialogue_state, dungeon_floor):
+            completion_bonus = reward_config.get('llm_completion_bonus', 50.0)
+            llm_bonus += completion_bonus
+            print(f"🧠 LLM GOAL COMPLETED! Major objective achieved (+{completion_bonus:.1f})")
+            
+        # Track steps since last LLM call
+        self.steps_since_llm_call += 1
+        
+        return llm_bonus
+    
+    def _check_llm_goal_completion(self, llm_action: str, current_room: int, dialogue_state: int, dungeon_floor: int) -> bool:
+        """Check if LLM's goal has been completed."""
+        if 'EXPLORE' in llm_action:
+            return current_room not in self.visited_rooms  # Found new area
+        elif any(word in llm_action for word in ['DUNGEON', 'ENTER']):
+            return dungeon_floor > 0  # Successfully entered dungeon
+        elif any(word in llm_action for word in ['TALK', 'NPC']):
+            return dialogue_state > 0  # Successfully initiated dialogue
+        elif 'ATTACK' in llm_action or 'COMBAT' in llm_action:
+            # Could check for enemy defeat here
+            return False
+        return False
+    
+    def update_llm_suggestion(self, suggestion: Dict[str, Any]) -> None:
+        """Update the latest LLM suggestion with MASSIVE EMPHASIS."""
+        self.last_llm_suggestion = suggestion
+        self.steps_since_llm_call = 0  # Reset counter
+        print(f"🧠 NEW LLM GUIDANCE: {suggestion.get('action', 'Unknown')} -> {suggestion.get('target', 'Unknown')}")
+        print(f"🧠 LLM REASONING: {suggestion.get('reasoning', 'No reasoning provided')}")
+    
+    def get_llm_alignment_stats(self) -> Dict[str, float]:
+        """Get statistics on how well the RL agent is following LLM guidance."""
+        if self.total_actions == 0:
+            return {"alignment_rate": 0.0, "total_actions": 0, "llm_aligned": 0}
+            
+        alignment_rate = self.llm_aligned_actions / self.total_actions
+        return {
+            "alignment_rate": alignment_rate,
+            "total_actions": self.total_actions,
+            "llm_aligned": self.llm_aligned_actions,
+            "steps_since_llm": self.steps_since_llm_call
+        }
 
     def _check_terminated(self) -> bool:
         """Check if episode should terminate."""
@@ -403,7 +508,13 @@ def create_pure_rl_env(rom_path: str, headless: bool = True, visual_test_mode: b
             'room_discovery_reward': 10.0,      # Big bonus for new areas
             'dungeon_discovery_reward': 25.0,   # Massive bonus for dungeon entry
             'dungeon_bonus': 5.0,               # Continuous bonus while in dungeon
-            'npc_interaction_reward': 15.0      # Big bonus for talking to NPCs
+            'npc_interaction_reward': 15.0,     # Big bonus for talking to NPCs
+            
+            # LLM GUIDANCE REWARDS - DISABLED for pure RL mode
+            'llm_guidance_multiplier': 0.0,     # No LLM guidance in pure RL
+            'llm_strategic_bonus': 0.0,         # No strategic bonus
+            'llm_directional_bonus': 0.0,       # No directional bonus  
+            'llm_completion_bonus': 0.0         # No completion bonus
         }
     }
     
@@ -442,7 +553,13 @@ def create_llm_guided_env(rom_path: str, headless: bool = True, visual_test_mode
             'room_discovery_reward': 10.0,      # Big bonus for new areas
             'dungeon_discovery_reward': 25.0,   # Massive bonus for dungeon entry
             'dungeon_bonus': 5.0,               # Continuous bonus while in dungeon
-            'npc_interaction_reward': 15.0      # Big bonus for talking to NPCs
+            'npc_interaction_reward': 15.0,     # Big bonus for talking to NPCs
+            
+            # LLM GUIDANCE REWARDS - MASSIVE EMPHASIS FOR LLM-GUIDED MODE!
+            'llm_guidance_multiplier': 5.0,     # Multiply normal rewards by 5x when following LLM
+            'llm_strategic_bonus': 2.0,         # Continuous bonus for following LLM direction
+            'llm_directional_bonus': 1.0,       # Bonus for moving in LLM-suggested direction
+            'llm_completion_bonus': 50.0        # HUGE bonus for completing LLM macro goals
         }
     }
     

@@ -14,7 +14,11 @@ from dataclasses import dataclass
 import logging
 from pathlib import Path
 
-from .macro_actions import MacroAction, create_macro_from_planner_output
+try:
+    from .macro_actions import MacroAction, create_macro_from_planner_output
+except ImportError:
+    # Handle direct script execution
+    from macro_actions import MacroAction, create_macro_from_planner_output
 
 
 @dataclass
@@ -48,6 +52,7 @@ class LocalZeldaPlanner:
         self.last_call_time = 0
         self.call_count = 0
         self.total_latency = 0
+        self.last_plan = None  # Store last plan for HUD display
         
         # Load optimized prompts
         self.system_prompt = self._load_optimized_system_prompt()
@@ -258,7 +263,15 @@ Action needed (JSON only):"""
     def get_macro_action(self, plan_text: str) -> Optional[MacroAction]:
         """Convert LLM plan to macro action."""
         try:
-            return create_macro_from_planner_output(plan_text)
+            # Parse JSON response first
+            if plan_text.strip().startswith('{'):
+                plan_dict = json.loads(plan_text.strip())
+                self.last_plan = plan_dict  # Store for HUD display
+                return create_macro_from_planner_output(plan_dict)
+            else:
+                # Fallback for non-JSON responses
+                self.logger.warning(f"Non-JSON plan response: {plan_text[:100]}...")
+                return None
         except Exception as e:
             self.logger.error(f"Error creating macro from plan: {e}")
             return None
