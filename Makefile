@@ -25,11 +25,14 @@ EPOCHS ?= 4
 BATCH_SIZE ?= 256
 CHECKPOINT ?= 
 
-.PHONY: help install llm-serve llm-stop llm-status clean headless visual inference run-all core-help
+.PHONY: help install llm-serve llm-stop llm-status clean headless visual inference hybrid-visual run-all core-help
 
 help: ## Show available commands and Strategic Training Framework overview
 	@echo "🎯 Zelda-LLM-RL Strategic Training Framework"
 	@echo "=========================================="
+	@echo ""
+	@echo "🚀 HYBRID RL+LLM COMMANDS:"
+	@echo "  hybrid-visual - 🆕 True hybrid RL+LLM (PPO learning + LLM button guidance)"
 	@echo ""
 	@echo "🚀 STRATEGIC FRAMEWORK COMMANDS:"
 	@echo "  headless      - Strategic headless training (production, breakthrough results)"
@@ -142,6 +145,38 @@ visual: ## Strategic visual training with unified framework + PyBoy + Web HUD
 	@echo "📱 Strategic HUD will open in browser"
 	@echo "🎮 PyBoy window will show framework in action"
 	$(PYTHON) train_visual_strategic.py
+
+# ========================================
+# 🚀 NEW: HYBRID RL+LLM VISUAL TRAINING  
+# ========================================
+
+hybrid-visual: ## 🆕 True hybrid RL+LLM with PPO learning + LLM button guidance
+	@echo "🤖 HYBRID RL+LLM VISUAL TRAINING"
+	@echo "================================="
+	@echo ""
+	@echo "🧠 AI Architecture:"
+	@echo "   - PPO Neural Network: Learning from experience"
+	@echo "   - LLM Guidance: Direct Game Boy button suggestions (UP, DOWN, A, B, etc.)"
+	@echo "   - Reward Shaping: Bonuses for following LLM guidance"
+	@echo "   - Auto-Exploration: Pure PPO learning on new screens (300 steps)"
+	@echo ""
+	@echo "🎮 Features:"
+	@echo "   - PyBoy emulator window (watch PPO agent learn)"
+	@echo "   - Web HUD at http://localhost:8086 (live LLM button commands)"
+	@echo "   - Rich game context: Location names, NPC detection, room mapping"
+	@echo "   - Simple LLM output: Direct button presses (UP, DOWN, LEFT, RIGHT, A, B, START, SELECT, NOP)"
+	@echo ""
+	@echo "📊 Training Details:"
+	@echo "   - LLM calls: Every 30 steps (ultra-responsive with MLX caching)"
+	@echo "   - Exploration mode: 300 steps of pure PPO per new screen"
+	@echo "   - Alignment bonuses: 2-3x reward for following LLM suggestions"
+	@echo "   - Context-aware bonuses: Extra rewards for smart actions (A near NPCs, retreat when low health)"
+	@echo ""
+	@echo "🚀 Starting hybrid RL+LLM training..."
+	@echo "📱 HUD will open in browser automatically"
+	@echo "🎮 PyBoy window will show agent learning"
+	@echo ""
+	$(PYTHON) train_hybrid_visual.py --steps 5000
 
 # ========================================
 # 🚀 CORE AREA 3: VISUAL INFERENCE  
