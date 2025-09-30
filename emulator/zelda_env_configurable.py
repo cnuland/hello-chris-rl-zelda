@@ -221,6 +221,9 @@ class ZeldaConfigurableEnvironment(gym.Env):
         import time
         step_start_time = time.time()
         
+        # 🎯 Track action for strategic reward calculation
+        self.last_action = action
+        
         # Convert action and execute with frame skip
         zelda_action = ZeldaAction(action)
         
@@ -293,13 +296,16 @@ class ZeldaConfigurableEnvironment(gym.Env):
                 dialogue_state = self.bridge.get_memory(0xC2EF)  # Dialogue/cutscene state
                 dungeon_floor = self.bridge.get_memory(0xC63D)  # Dungeon floor (0 = overworld)
                 
-                # A) NEW ROOM EXPLORATION REWARD - HUGE BONUS!
+                # A) NEW ROOM EXPLORATION REWARD - HUGE BONUS (ONLY ONCE PER ROOM!)
                 if current_room not in self.visited_rooms:
                     self.visited_rooms.add(current_room)
                     exploration_reward = reward_config.get('room_discovery_reward', 10.0)
                     total_reward += exploration_reward
-                    if self.episode_count % 10 == 0:  # Log occasionally
-                        print(f"🗺️  NEW ROOM DISCOVERED! Room {current_room} (+{exploration_reward:.1f} reward)")
+                    print(f"🗺️  NEW ROOM DISCOVERED! Room {current_room} (+{exploration_reward:.1f} reward) | Total visited: {len(self.visited_rooms)}")
+                else:
+                    # DEBUG: Log revisits to catch farming
+                    if self.steps_since_last_llm_call < 5 and self.last_room_id != current_room:
+                        print(f"⚠️  REVISITING ROOM {current_room} - NO REWARD (already in visited set)")
                 
                 # B) DUNGEON REWARDS - MASSIVE BONUS!
                 if dungeon_floor > 0:  # In a dungeon
@@ -328,6 +334,10 @@ class ZeldaConfigurableEnvironment(gym.Env):
                 if hasattr(self, 'last_llm_suggestion') and self.last_llm_suggestion:
                     llm_bonus = self._calculate_llm_guidance_reward(current_room, dialogue_state, dungeon_floor)
                     total_reward += llm_bonus
+                    
+                # E) 🎯 STRATEGIC ACTION REWARDS - Teach RL proper Zelda gameplay
+                strategic_bonus = self._calculate_strategic_action_rewards()
+                total_reward += strategic_bonus
                     
         except Exception as e:
             # If memory access fails, just use base rewards
@@ -402,6 +412,133 @@ class ZeldaConfigurableEnvironment(gym.Env):
             # Could check for enemy defeat here
             return False
         return False
+    
+    def _calculate_strategic_action_rewards(self) -> float:
+        """🎯 Calculate rewards that teach the RL agent proper Zelda gameplay patterns.
+        
+        This method rewards:
+        1. Combat actions (A button near enemies)
+        2. Environmental interaction (grass cutting, rock lifting)
+        3. Item collection attempts
+        4. Strategic movement patterns
+        
+        Returns:
+            Strategic action bonus reward
+        """
+        try:
+            strategic_reward = 0.0
+            reward_config = self.config.get('rewards', {})
+            
+            # Get current game state
+            current_health = self.bridge.get_memory(0xC021) // 4  # Current health in hearts
+            rupees = self.bridge.get_memory(0xC6A5)  # Current rupees
+            keys = self.bridge.get_memory(0xC673)    # Current keys
+            bombs = self.bridge.get_memory(0xC674)   # Current bombs
+            
+            # Get previous values for comparison
+            prev_health = getattr(self, 'prev_strategic_health', current_health)
+            prev_rupees = getattr(self, 'prev_strategic_rupees', rupees)
+            prev_keys = getattr(self, 'prev_strategic_keys', keys)
+            prev_bombs = getattr(self, 'prev_strategic_bombs', bombs)
+            
+            # 🗡️ COMBAT REWARDS - Massive bonus for successful combat
+            if current_health > prev_health:
+                # Health increased (found heart/heart container)
+                health_bonus = reward_config.get('health_gain_reward', 30.0)
+                strategic_reward += health_bonus
+                print(f"❤️ Health gained! +{health_bonus:.1f} (Combat/exploration success)")
+                
+            # 💰 ITEM COLLECTION REWARDS - HUGE bonuses for collecting items
+            rupee_gain = rupees - prev_rupees
+            if rupee_gain > 0:
+                rupee_bonus = rupee_gain * reward_config.get('rupee_collection_multiplier', 2.0)
+                strategic_reward += rupee_bonus
+                print(f"💰 Rupees collected! +{rupee_gain} rupees = +{rupee_bonus:.1f} reward")
+                
+            key_gain = keys - prev_keys
+            if key_gain > 0:
+                key_bonus = key_gain * reward_config.get('key_collection_reward', 10.0)
+                strategic_reward += key_bonus
+                print(f"🗝️ Keys collected! +{key_gain} keys = +{key_bonus:.1f} reward")
+                
+            bomb_gain = bombs - prev_bombs
+            if bomb_gain > 0:
+                bomb_bonus = bomb_gain * reward_config.get('bomb_collection_reward', 8.0)
+                strategic_reward += bomb_bonus
+                print(f"💣 Bombs collected! +{bomb_gain} bombs = +{bomb_bonus:.1f} reward")
+                
+            # 🎯 ACTION-BASED REWARDS - Reward specific button sequences that indicate strategy
+            # This teaches the neural network which actions lead to good outcomes
+            
+            # Reward A button usage (sword attacks, interactions) 
+            a_button_reward = reward_config.get('combat_action_reward', 0.5)
+            if hasattr(self, 'last_action') and self.last_action == 5:  # A button
+                strategic_reward += a_button_reward
+                
+            # Reward B button usage (items, lifting)
+            b_button_reward = reward_config.get('interaction_action_reward', 0.3)
+            if hasattr(self, 'last_action') and self.last_action == 6:  # B button
+                strategic_reward += b_button_reward
+                
+            # 📈 PATTERN REWARDS - Reward sequences that indicate strategic thinking
+            # Track recent action history for pattern detection
+            if not hasattr(self, 'recent_actions'):
+                self.recent_actions = []
+            if hasattr(self, 'last_action'):
+                self.recent_actions.append(self.last_action)
+                if len(self.recent_actions) > 10:  # Keep last 10 actions
+                    self.recent_actions.pop(0)
+                
+            # Reward combat patterns (movement + attack combinations)
+            combat_pattern_count = 0
+            for i in range(len(self.recent_actions) - 1):
+                if (self.recent_actions[i] in [1, 2, 3, 4] and  # Movement action
+                    self.recent_actions[i + 1] == 5):             # Followed by A button
+                    combat_pattern_count += 1
+                    
+            if combat_pattern_count > 0:
+                pattern_bonus = combat_pattern_count * reward_config.get('combat_pattern_reward', 1.0)
+                strategic_reward += pattern_bonus
+                if combat_pattern_count >= 3:  # Significant combat activity
+                    print(f"⚔️ Combat patterns detected! {combat_pattern_count} sequences = +{pattern_bonus:.1f}")
+                    
+            # 🌟 MILESTONE REWARDS - Big bonuses for reaching collection thresholds
+            # These create clear learning objectives for the RL agent
+            
+            # Rupee milestones
+            rupee_milestones = [10, 25, 50, 100, 200]
+            for milestone in rupee_milestones:
+                if rupees >= milestone and prev_rupees < milestone:
+                    milestone_bonus = reward_config.get('rupee_milestone_reward', 25.0)
+                    strategic_reward += milestone_bonus
+                    print(f"🏆 Rupee milestone! {milestone} rupees reached = +{milestone_bonus:.1f}")
+                    
+            # Health milestones (full health recovery)
+            if current_health >= 3 and prev_health < 3:  # Full health restored
+                health_milestone = reward_config.get('full_health_reward', 20.0)
+                strategic_reward += health_milestone
+                print(f"❤️ Full health restored! +{health_milestone:.1f}")
+            
+            # Store current values for next comparison
+            self.prev_strategic_health = current_health
+            self.prev_strategic_rupees = rupees  
+            self.prev_strategic_keys = keys
+            self.prev_strategic_bombs = bombs
+            
+            # 🎮 STRATEGIC ENCOURAGEMENT - Small bonuses for good gameplay habits
+            # Reward active play over idle behavior
+            if len(self.recent_actions) >= 5:
+                # Calculate action diversity (avoid button mashing)
+                unique_actions = len(set(self.recent_actions[-5:]))
+                if unique_actions >= 3:  # Used 3+ different actions recently
+                    diversity_bonus = reward_config.get('action_diversity_reward', 0.5)
+                    strategic_reward += diversity_bonus
+                    
+            return strategic_reward
+            
+        except Exception as e:
+            # If strategic reward calculation fails, return 0
+            return 0.0
     
     def update_llm_suggestion(self, suggestion: Dict[str, Any]) -> None:
         """Update the latest LLM suggestion with MASSIVE EMPHASIS."""

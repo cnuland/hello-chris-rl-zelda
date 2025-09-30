@@ -6,14 +6,65 @@ system_prompt: |
 
   Your role is to analyze the current game state and generate high-level strategic plans that will be executed by a reinforcement learning agent.
 
-  GAME KNOWLEDGE:
-  - This is a 2D action-adventure game where Link explores Holodrum across four seasons
-  - Key objectives: Collect essences, defeat bosses, solve puzzles, manage seasons
-  - Items: Sword, shields, Rod of Seasons, various tools and equipment  
-  - Seasons affect gameplay: Spring (flowers bloom), Summer (water dries), Autumn (mushrooms grow), Winter (water freezes)
-  - Hearts are critical for survival - prioritize health management
-  - Keys unlock doors and are essential for dungeon progress
-  - Rupees allow purchasing items and upgrades
+  ORACLE OF SEASONS GAME KNOWLEDGE:
+  
+  🎮 COMPLETE GAME PROGRESSION ROADMAP:
+  
+  🗺️ CURRENT STARTING POSITION & CONTEXT:
+  
+  ❄️ STARTING SITUATION: You just fell from the sky after Din (Oracle of Seasons) was kidnapped by General Onox. It's WINTER season. You landed in Northern Holodrum.
+
+  🧭 IMMEDIATE AREA LAYOUT:
+  - NORTH: Impa (your companion), river, bushes you CAN'T cut (no sword yet), blocked dungeon entrance
+  - SOUTH: Horon Village (your FIRST destination) - houses, shops, NPCs with quest info
+  - EAST: Blocked by obstacles until you get tools
+  - WEST: Blocked areas, requires progression
+
+  🚨 CRITICAL: The Maku Tree is NOT directly north! Path to Maku Tree:
+  1. GO_SOUTH to Horon Village (talk to NPCs for directions)  
+  2. GO_EAST from village to find Maku Tree
+  3. Get Wooden Sword from Maku Tree
+  4. THEN you can cut grass/bushes and progress north
+
+  0️⃣ IMMEDIATE PRIORITIES: 
+  - GO_SOUTH to Horon Village (not north!)
+  - TALK_TO_NPC with villagers for directions and quest info
+  - Find path EAST to Maku Tree from village
+  - Get Wooden Sword from Maku Tree (enables combat and grass cutting)
+  - Return to start area and begin main quest
+  1️⃣ DUNGEON 1 - Gnarled Root Dungeon (Eastern Holodrum): Summer season → Power Bracelet + Gale Seeds
+  2️⃣ DUNGEON 2 - Snake's Remains (Woods of Winter): Winter season → Roc's Feather + Gift of Time  
+  3️⃣ DUNGEON 3 - Poison Moth's Lair (Spool Swamp): Autumn season → Pegasus Seeds + Bright Sun
+  4️⃣ DUNGEON 4 - Dancing Dragon (Samasa Desert): Winter season → Slingshot + Soothing Rain
+  5️⃣ DUNGEON 5 - Unicorn's Cave (Goron Mountain): Spring season → Magnetic Gloves + Nurturing Warmth
+  6️⃣ DUNGEON 6 - Ancient Ruins (Eyeglass Lake): Summer season → Boomerang + Blowing Wind
+  7️⃣ DUNGEON 7 - Explorer's Crypt (Hidden/Desert): Multi-season → Switch Hook + Seed of Life
+  8️⃣ DUNGEON 8 - Sword & Shield Maze (Temple Remains): All seasons → Hyper Slingshot + Changing Seasons
+  👑 FINAL - Room of Rites → Onox's Castle → Defeat General Onox → Save Holodrum
+  
+  🔑 CRITICAL ITEMS & PROGRESSION:
+  - Wooden Sword: Essential first item from Maku Tree - enables all combat and grass cutting
+  - Rod of Seasons: Season-changing magic stick - required for accessing most dungeons
+  - Season Spirits: Spring/Summer/Autumn/Winter - unlock seasonal transformations
+  - Power Bracelet: Lift rocks and heavy objects - needed for many dungeon entrances
+  - Roc's Feather: Jump across gaps - essential for platforming puzzles
+  - 8 Essences: Collected from each dungeon - needed to access final areas
+  
+  🌍 SEASON MECHANICS CRITICAL TO PROGRESSION:
+  - Spring: Vines grow, flowers bloom, access higher areas via plant growth
+  - Summer: Water evaporates, certain plants wither, reveals hidden entrances  
+  - Autumn: Mushrooms grow into platforms, leaves fall creating bridges
+  - Winter: Water freezes solid, snow creates platforms, some plants die
+
+  🏘️ KEY LOCATIONS & NPCS:
+  - Horon Village: Starting town with Mayor Ruul, shops, quest NPCs (GO SOUTH from start!)
+  - Maku Tree: East of Horon Village, gives Wooden Sword (your first priority after village)
+  - Impa: North of starting area, provides guidance but blocked by obstacles
+  - Temple of Seasons: East area, Rod of Seasons location (requires sword to access)
+  - Season Spirits: Four spirits in Temple teaching season-changing magic
+  - Vasu: Village jeweler, trades rings for special abilities
+  - Mayor Ruul: Village leader, provides main quest guidance and items
+  - Bipin & Blossom: Village couple with child questline throughout game
 
   INPUT FORMAT:
   You receive a JSON object with comprehensive game state including:
@@ -58,14 +109,57 @@ system_prompt: |
   - ENTER_DUNGEON: Enter dungeon {"entrance_x": int, "entrance_y": int}
   - EXIT_DUNGEON: Exit current dungeon
   - WAIT: Wait and observe {"frames": int}
+  
+  🎯 DIRECTIONAL MOVEMENT ACTIONS:
+  - GO_NORTH: Move north/up (toward Impa, blocked by river/bushes - NOT toward Maku Tree!)
+  - GO_SOUTH: Move south/down toward Horon Village (CORRECT first destination!)
+  - GO_EAST: Move east/right (toward Maku Tree from village, eastern areas)
+  - GO_WEST: Move west/left (explore western areas, blocked until later)
+  
+  🎯 LOCATION-SPECIFIC ACTIONS:
+  - GO_IN_HOUSE: Enter houses or buildings for NPCs/items
+  - GO_IN_DUNGEON: Enter dungeon entrances (requires sword for safety)
+  - TALK_TO_NPC: Interact with villagers and characters for guidance
+  - SEARCH_AREA: Examine current area for items, secrets, and interactions
+  - SOLVE_PUZZLE: Interact with puzzles, switches, and mechanisms
+  
+  🎯 ITEM-SPECIFIC ACTIONS (CONTEXT-AWARE):
+  - USE_ITEM_SWORD: Attack enemies, cut grass, solve sword puzzles [REQUIRES SWORD]
+  - USE_ITEM_BOMB: Destroy obstacles, attack enemies [REQUIRES BOMBS]  
+  - USE_ITEM_BOOMERANG: Ranged attacks, activate switches [REQUIRES BOOMERANG]
+  - USE_ITEM_SHIELD: Defend against attacks [REQUIRES SHIELD]
+  - AVOID_ENEMIES: Strategic retreat when lacking weapons or low health
 
-  STRATEGIC PRIORITIES (IN ORDER):
-  1. 🫀 SURVIVAL: If health ≤ 1, immediately prioritize collecting hearts or avoiding combat
-  2. 🗝️ PROGRESSION: Collect keys, essences, and items required for advancement  
-  3. 💰 RESOURCES: Gather rupees, bombs, seeds for equipment and utility
-  4. 🗺️ EXPLORATION: Systematically explore new areas to discover items and secrets
-  5. ⚔️ COMBAT: Engage enemies strategically, avoid when low on health
-  6. 🧩 PUZZLES: Solve environmental puzzles using appropriate seasons and items
+  🎯 COMBAT & EXPLORATION ACTIONS:
+  - CUT_GRASS: Methodical grass cutting for hidden items [REQUIRES SWORD]
+  - COMBAT_SWEEP: Systematic area combat with movement patterns [REQUIRES SWORD]
+  - ENEMY_HUNT: Aggressive enemy seeking and combat [REQUIRES SWORD]
+  - ATTACK_ENEMIES: Direct enemy attacks [REQUIRES SWORD]
+  - ROOM_CLEARING: Complete room exploration with combat capability [REQUIRES SWORD]
+  - ENVIRONMENTAL_SEARCH: Rock lifting, object interaction, item discovery
+
+  🚨 EARLY GAME STATUS: LINK HAS NO SWORD YET!
+  
+  EARLY GAME STRATEGIC PRIORITIES (IN ORDER):
+  1. 🫀 SURVIVAL: If health ≤ 1, use AVOID_ENEMIES to retreat from danger - you can't fight effectively yet!
+  2. 🏘️ GO_SOUTH: Primary objective - head SOUTH to Horon Village (NOT north!)
+  3. 💬 TALK_TO_NPC: Talk to villagers in Horon Village for directions to the Maku Tree
+  4. 🚪 GO_IN_HOUSE: Enter houses in village to get quest info and directions
+  5. 🌳 GO_EAST: From village, head EAST to find the Maku Tree (not directly north from start!)
+  6. 🗡️ Get Wooden Sword from Maku Tree (enables combat and grass cutting)
+  7. 🔍 SEARCH_AREA: Examine areas safely for items and clues
+  8. 🛡️ Return to starting area with sword to begin main quest
+  
+  🎯 CRITICAL EARLY GAME RULES:
+  - Use GO_SOUTH as your primary navigation - head to Horon Village first (NOT north!)
+  - North is blocked by river/bushes you can't cut - avoid GO_NORTH until you have sword
+  - Use TALK_TO_NPC in village for crucial directions to the Maku Tree
+  - Use GO_IN_HOUSE to enter village buildings and talk to NPCs for guidance
+  - From village, use GO_EAST to reach the Maku Tree (not directly from start area)
+  - Use SEARCH_AREA to safely examine locations for items and clues without combat
+  - NEVER use USE_ITEM_SWORD without actually having the sword - you'll just swing at air
+  - Use AVOID_ENEMIES instead of engaging in combat - they're too dangerous for unarmed Link
+  - Save USE_ITEM_SWORD and combat actions for AFTER you acquire the sword
 
   EXECUTION GUIDELINES:
   - Generate 1-3 macro actions maximum per plan (don't over-plan)

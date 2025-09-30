@@ -16,6 +16,7 @@ import threading
 import webbrowser
 import requests
 from pathlib import Path
+from typing import Dict, Tuple
 from flask import Flask, render_template_string
 
 # Add project root to path
@@ -293,6 +294,91 @@ Respond with JSON: {"action": "EXPLORE|MOVE_TO|TALK_TO|ATTACK|USE_ITEM", "target
             "phase": "error"
         }
 
+def translate_llm_to_strategic_action(llm_guidance: Dict[str, str], action_space_size: int) -> Tuple[int, int]:
+    """Translate LLM guidance into strategic game actions.
+    
+    Args:
+        llm_guidance: LLM response with action and reasoning
+        action_space_size: Size of action space
+        
+    Returns:
+        Tuple of (action_id, steps_to_execute)
+    """
+    action_type = llm_guidance.get("action", "").upper()
+    reasoning = llm_guidance.get("reasoning", "").lower()
+    
+    # 🎯 STRATEGIC MACRO TRANSLATION
+    if "COMBAT_SWEEP" in action_type or "ATTACK" in action_type or "enemy" in reasoning:
+        # Sword attack (A button) with movement pattern
+        return 4, 15  # A button for 15 steps
+        
+    elif "CUT_GRASS" in action_type or "grass" in reasoning:
+        # Systematic grass cutting (A button with movement)
+        return 4, 20  # A button for 20 steps
+        
+    elif "SEARCH_ITEMS" in action_type or "item" in reasoning:
+        # Item searching (B button interaction)
+        return 5, 10  # B button for 10 steps
+        
+    elif "ENEMY_HUNT" in action_type or "hunt" in reasoning:
+        # Aggressive enemy seeking (A button + movement)
+        return 4, 25  # A button for 25 steps
+        
+    elif "ENVIRONMENTAL_SEARCH" in action_type or "environment" in reasoning:
+        # Environment interaction (B button)
+        return 5, 15  # B button for 15 steps
+        
+    elif "ROOM_CLEARING" in action_type or "clear" in reasoning:
+        # Comprehensive room clearing (A button)
+        return 4, 30  # A button for 30 steps
+        
+    elif "EXPLORE" in action_type or "explore" in reasoning:
+        # Directional movement based on reasoning
+        if any(direction in reasoning for direction in ["up", "north"]):
+            return 0, 8  # UP for 8 steps
+        elif any(direction in reasoning for direction in ["down", "south"]):
+            return 1, 8  # DOWN for 8 steps
+        elif any(direction in reasoning for direction in ["left", "west"]):
+            return 2, 8  # LEFT for 8 steps
+        elif any(direction in reasoning for direction in ["right", "east"]):
+            return 3, 8  # RIGHT for 8 steps
+        else:
+            return 0, 8  # Default UP
+            
+    elif "TALK" in action_type or "npc" in reasoning:
+        # NPC interaction (A button)
+        return 4, 5  # A button for 5 steps
+        
+    else:
+        # Default strategic exploration
+        return intelligent_exploration_action(0, action_space_size), 8
+
+def intelligent_exploration_action(step: int, action_space_size: int) -> int:
+    """Intelligent exploration instead of pure random actions.
+    
+    Args:
+        step: Current step number
+        action_space_size: Size of action space
+        
+    Returns:
+        Strategic action ID
+    """
+    # Cycle through exploration patterns instead of pure randomness
+    cycle = step % 40  # 40-step cycles
+    
+    if cycle < 8:
+        return 0  # UP - explore north
+    elif cycle < 16:
+        return 3  # RIGHT - explore east  
+    elif cycle < 24:
+        return 1  # DOWN - explore south
+    elif cycle < 32:
+        return 2  # LEFT - explore west
+    elif cycle < 36:
+        return 4  # A button - attack/interact
+    else:
+        return 5  # B button - secondary interact
+
 def run_hybrid_inference():
     """Run the hybrid RL inference with PyBoy visual and LLM guidance."""
     print("🎮 Starting hybrid RL INFERENCE with PyBoy visual...")
@@ -340,9 +426,27 @@ def run_hybrid_inference():
         obs, info = env.reset()
         add_activity("🔄 Episode started", "info")
         
+        # Strategic action state tracking
+        current_strategic_action = None
+        strategic_steps_remaining = 0
+        last_llm_guidance = None
+        
         for step in range(3000):  # 5 minutes of gameplay
-            # Take random action (or implement actual RL policy)
-            action = np.random.randint(0, env.action_space.n)
+            # 🎯 STRATEGIC ACTION SELECTION - Follow LLM Guidance!
+            if strategic_steps_remaining > 0 and current_strategic_action is not None:
+                # Continue executing strategic action
+                action = current_strategic_action
+                strategic_steps_remaining -= 1
+            else:
+                # Choose new action based on LLM guidance or exploration
+                if last_llm_guidance:
+                    action, strategic_steps_remaining = translate_llm_to_strategic_action(
+                        last_llm_guidance, env.action_space.n
+                    )
+                    current_strategic_action = action
+                else:
+                    # Intelligent exploration instead of pure random
+                    action = intelligent_exploration_action(step, env.action_space.n)
             obs, reward, done, truncated, info = env.step(action)
             
             episode_reward += reward
@@ -380,8 +484,11 @@ Link is exploring the overworld. What strategic action should he take next?
                 if llm_response["phase"] != "error":
                     successful_calls += 1
                     add_activity(f"✅ LLM: {llm_response['action']}", "success")
+                    # 🎯 CAPTURE LLM GUIDANCE FOR STRATEGIC ACTION!
+                    last_llm_guidance = llm_response
                 else:
                     add_activity(f"❌ LLM error: {llm_response['reasoning']}", "failure")
+                    last_llm_guidance = None
                 
                 # Update HUD
                 hud_state["latest_command"] = llm_response

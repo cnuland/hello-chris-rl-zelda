@@ -4,11 +4,14 @@ Based on Data Crystal community RAM mapping and oracles-disasm project.
 Addresses are for US v1.0 ROM. Source: https://datacrystal.romhacking.net/
 """
 
-# Core player position (these may need verification - not in Data Crystal map)
-PLAYER_X = 0xD300  # Link's X position (needs verification)
-PLAYER_Y = 0xD301  # Link's Y position (needs verification) 
+# Core player position (Data Crystal confirmed)
+PLAYER_X = 0xC4AC  # Link's X position (pixel coordinate within screen)
+PLAYER_Y = 0xC4AD  # Link's Y position (pixel coordinate within screen)
 PLAYER_DIRECTION = 0xD302  # Facing direction (needs verification)
-PLAYER_ROOM = 0xD303  # Current room/screen ID (needs verification)
+PLAYER_ROOM = 0xC63B  # Current overworld room/screen ID (0x00-0xFF)
+CURRENT_LEVEL_BANK = 0xC63A  # Current level bank (overworld vs dungeon)
+CURRENT_DUNGEON_POSITION = 0xC63C  # Current dungeon room position
+CURRENT_DUNGEON_FLOOR = 0xC63D  # Current dungeon floor number
 
 # Health system (Data Crystal confirmed)
 PLAYER_HEALTH = 0xC6A2  # Current hearts (quarter-hearts, divide by 4)

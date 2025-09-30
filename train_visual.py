@@ -16,6 +16,7 @@ import threading
 import webbrowser
 import requests
 from pathlib import Path
+from typing import Dict, Tuple
 from flask import Flask, render_template_string
 
 # Add project root to path
@@ -293,9 +294,95 @@ Respond with JSON: {"action": "EXPLORE|MOVE_TO|TALK_TO|ATTACK|USE_ITEM", "target
             "phase": "error"
         }
 
+def translate_llm_to_strategic_action(llm_guidance: Dict[str, str], action_space_size: int) -> Tuple[int, int]:
+    """Translate LLM guidance into strategic game actions.
+    
+    Args:
+        llm_guidance: LLM response with action and reasoning
+        action_space_size: Size of action space
+        
+    Returns:
+        Tuple of (action_id, steps_to_execute)
+    """
+    action_type = llm_guidance.get("action", "").upper()
+    reasoning = llm_guidance.get("reasoning", "").lower()
+    
+    # 🎯 STRATEGIC MACRO TRANSLATION
+    if "COMBAT_SWEEP" in action_type or "ATTACK" in action_type or "ENEMY" in reasoning:
+        # Sword attack (A button) with movement pattern
+        return 4, 15  # A button for 15 steps
+        
+    elif "CUT_GRASS" in action_type or "grass" in reasoning:
+        # Systematic grass cutting (A button with movement)
+        return 4, 20  # A button for 20 steps
+        
+    elif "SEARCH_ITEMS" in action_type or "item" in reasoning:
+        # Item searching (B button interaction)
+        return 5, 10  # B button for 10 steps
+        
+    elif "ENEMY_HUNT" in action_type or "hunt" in reasoning:
+        # Aggressive enemy seeking (A button + movement)
+        return 4, 25  # A button for 25 steps
+        
+    elif "ENVIRONMENTAL_SEARCH" in action_type or "environment" in reasoning:
+        # Environment interaction (B button)
+        return 5, 15  # B button for 15 steps
+        
+    elif "ROOM_CLEARING" in action_type or "clear" in reasoning:
+        # Comprehensive room clearing (A button)
+        return 4, 30  # A button for 30 steps
+        
+    elif "EXPLORE" in action_type or "explore" in reasoning:
+        # Directional movement based on reasoning
+        if any(direction in reasoning for direction in ["up", "north"]):
+            return 0, 8  # UP for 8 steps
+        elif any(direction in reasoning for direction in ["down", "south"]):
+            return 1, 8  # DOWN for 8 steps
+        elif any(direction in reasoning for direction in ["left", "west"]):
+            return 2, 8  # LEFT for 8 steps
+        elif any(direction in reasoning for direction in ["right", "east"]):
+            return 3, 8  # RIGHT for 8 steps
+        else:
+            return 0, 8  # Default UP
+            
+    elif "TALK" in action_type or "npc" in reasoning:
+        # NPC interaction (A button)
+        return 4, 5  # A button for 5 steps
+        
+    else:
+        # Default strategic exploration
+        return intelligent_exploration_action(0, action_space_size), 8
+
+def intelligent_exploration_action(step: int, action_space_size: int) -> int:
+    """Intelligent exploration instead of pure random actions.
+    
+    Args:
+        step: Current step number
+        action_space_size: Size of action space
+        
+    Returns:
+        Strategic action ID
+    """
+    # Cycle through exploration patterns instead of pure randomness
+    cycle = step % 40  # 40-step cycles
+    
+    if cycle < 8:
+        return 0  # UP - explore north
+    elif cycle < 16:
+        return 3  # RIGHT - explore east  
+    elif cycle < 24:
+        return 1  # DOWN - explore south
+    elif cycle < 32:
+        return 2  # LEFT - explore west
+    elif cycle < 36:
+        return 4  # A button - attack/interact
+    else:
+        return 5  # B button - secondary interact
+
 def run_hybrid_training():
     """Run the hybrid RL training with PyBoy visual and LLM guidance."""
     print("🎮 Starting hybrid RL training with PyBoy visual...")
+    print("🔍 DEBUG: run_hybrid_training() called")
     
     add_activity("🚀 Initializing hybrid system", "success")
     add_activity("🔗 MLX Qwen2.5-14B ready", "success")
@@ -306,7 +393,6 @@ def run_hybrid_training():
         env = ZeldaConfigurableEnvironment(
             rom_path=str(project_root / "roms" / "zelda_oracle_of_seasons.gbc"),
             headless=False,  # Visual mode!
-            visual_test_mode=True,
             config_dict={
                 "controller": {
                     "use_planner": True,
@@ -318,13 +404,30 @@ def run_hybrid_training():
                     "max_planner_frequency": 50    # Maximum 50 steps between calls
                 },
                 "environment": {
-                    "max_episode_steps": 3000,  # 5 minutes at 10 FPS
-                    "frame_skip": 6
+                    "max_episode_steps": 12000,  # 10 minutes at 20 FPS
+                    "frame_skip": 4  # Better performance for visual
                 },
                 "rewards": {
+                    # 🎯 STRATEGIC REWARDS - Same as successful headless training!
                     "room_discovery_reward": 15.0,
                     "dungeon_discovery_reward": 30.0,
-                    "npc_interaction_reward": 20.0
+                    "npc_interaction_reward": 20.0,
+                    "llm_guidance_multiplier": 5.0,    # 🔥 5X LLM EMPHASIS!
+                    "llm_strategic_bonus": 2.0,        # Strategic alignment bonus
+                    "llm_directional_bonus": 1.0,      # Movement alignment
+                    "llm_completion_bonus": 50.0,      # Goal completion
+                    
+                    # 💰 STRATEGIC ACTION REWARDS - For teaching RL network
+                    "health_gain_reward": 30.0,        # Health recovery bonus
+                    "rupee_collection_multiplier": 2.0, # Item collection
+                    "key_collection_reward": 10.0,     # Key rewards
+                    "bomb_collection_reward": 8.0,     # Bomb rewards
+                    "combat_action_reward": 0.5,       # A button usage
+                    "interaction_action_reward": 0.3,  # B button usage
+                    "combat_pattern_reward": 1.0,      # Movement + attack
+                    "rupee_milestone_reward": 25.0,    # Collection milestones
+                    "full_health_reward": 20.0,        # Health restoration
+                    "action_diversity_reward": 0.5     # Strategic variety
                 }
             }
         )
@@ -340,10 +443,38 @@ def run_hybrid_training():
         obs, info = env.reset()
         add_activity("🔄 Episode started", "info")
         
-        for step in range(3000):  # 5 minutes of gameplay
-            # Take random action (or implement actual RL policy)
-            action = np.random.randint(0, env.action_space.n)
-            obs, reward, done, truncated, info = env.step(action)
+        # Strategic action state tracking
+        current_strategic_action = None
+        strategic_steps_remaining = 0
+        last_llm_guidance = None
+        
+        for step in range(12000):  # 10 minutes at 20 FPS
+            # Debug: Print progress every 100 steps
+            if step % 100 == 0:
+                print(f"🎯 Step {step}/12000 ({step/12000*100:.1f}%)")
+            
+            # 🎯 STRATEGIC ACTION SELECTION - Follow LLM Guidance!
+            if strategic_steps_remaining > 0 and current_strategic_action is not None:
+                # Continue executing strategic action
+                action = current_strategic_action
+                strategic_steps_remaining -= 1
+            else:
+                # Choose new action based on LLM guidance or exploration
+                if last_llm_guidance:
+                    action, strategic_steps_remaining = translate_llm_to_strategic_action(
+                        last_llm_guidance, env.action_space.n
+                    )
+                    current_strategic_action = action
+                else:
+                    # Intelligent exploration instead of pure random
+                    action = intelligent_exploration_action(step, env.action_space.n)
+                
+            try:
+                obs, reward, done, truncated, info = env.step(action)
+            except Exception as e:
+                print(f"❌ Error during step {step}: {e}")
+                add_activity(f"❌ Step error: {str(e)}", "failure")
+                break
             
             episode_reward += reward
             total_steps += 1
@@ -361,17 +492,33 @@ def run_hybrid_training():
             if step > 0 and step % 30 == 0:
                 add_activity(f"🧠 Calling LLM at step {step}", "info")
                 
-                # Create game state prompt
+                # Create strategic game state prompt using strategic macros
                 prompt = f"""
-Game State - Step {step}:
-- Current reward: {episode_reward:.1f}
-- Recent reward: {reward:.2f}
-- Episode progress: {step/3000*100:.1f}%
+🎯 STRATEGIC VISUAL DEMO - Step {step}:
+
+📊 CURRENT STATUS:
+- Episode reward: {episode_reward:.1f} (Recent: {reward:.2f})
+- Episode progress: {step/12000*100:.1f}%
 - Health: 3/3 hearts
 - Location: Overworld exploration
 
-🧠 EMPHASIS: Your suggestions get 5X REWARD MULTIPLIER when followed!
-Link is exploring the overworld. What strategic action should he take next?
+🔥 STRATEGIC EMPHASIS: Your suggestions get 5X REWARD MULTIPLIER when followed!
+
+🎯 AVAILABLE STRATEGIC MACRO ACTIONS:
+- COMBAT_SWEEP: Systematic area combat with movement {"intensity": "normal"}
+- CUT_GRASS: Methodical grass cutting for items {"pattern": "systematic"}  
+- SEARCH_ITEMS: Thorough item searching {"type": "thorough"}
+- ENEMY_HUNT: Seek and destroy enemies for drops {"aggression": "moderate"}
+- ENVIRONMENTAL_SEARCH: Comprehensive environment interaction
+- ROOM_CLEARING: Complete room exploration + combat {"thoroughness": "complete"}
+
+🎮 CRITICAL ZELDA GAMEPLAY RULES:
+- Combat and grass-cutting are ESSENTIAL for item collection
+- Items are hidden in: grass (CUT_GRASS), rocks (ENVIRONMENTAL_SEARCH), enemy drops (COMBAT_SWEEP)
+- Use ROOM_CLEARING when entering new areas - combines combat + exploration + items
+- Prioritize strategic macros over random movement
+
+What strategic macro action should Link take for maximum item collection and exploration?
 """
                 
                 llm_response = call_mlx_llm(prompt)
@@ -380,8 +527,11 @@ Link is exploring the overworld. What strategic action should he take next?
                 if llm_response["phase"] != "error":
                     successful_calls += 1
                     add_activity(f"✅ LLM: {llm_response['action']}", "success")
+                    # 🎯 CAPTURE LLM GUIDANCE FOR STRATEGIC ACTION!
+                    last_llm_guidance = llm_response
                 else:
                     add_activity(f"❌ LLM error: {llm_response['reasoning']}", "failure")
+                    last_llm_guidance = None
                 
                 # Update HUD
                 hud_state["latest_command"] = llm_response
@@ -391,7 +541,14 @@ Link is exploring the overworld. What strategic action should he take next?
             
             # Check if episode ended
             if done or truncated:
-                add_activity(f"📊 Episode complete! Final reward: {episode_reward:.1f}", "success")
+                if done:
+                    print(f"💀 Episode TERMINATED at step {step} (done=True)")
+                    add_activity(f"💀 Episode terminated at step {step}", "failure")
+                if truncated:
+                    print(f"⏰ Episode TRUNCATED at step {step} (reached max steps)")
+                    add_activity(f"⏰ Episode truncated at step {step}", "warning")
+                print(f"📊 Final stats: {step} steps, {episode_reward:.1f} reward")
+                add_activity(f"📊 Episode complete! Steps: {step}, Reward: {episode_reward:.1f}", "success")
                 break
                 
             # Small delay for visual mode

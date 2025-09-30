@@ -58,6 +58,14 @@ class ZeldaStateEncoder:
                 'key': [0x45],
                 'bomb': [0x46],
                 'arrow': [0x47],
+            },
+            'npc_tiles': {
+                # NPCs in Oracle of Seasons - these are estimates and need refinement
+                'villager': list(range(0x60, 0x70)),  # Horon Village NPCs
+                'shop_keeper': list(range(0x70, 0x74)),  # Shop owners
+                'maku_tree': [0x80, 0x81, 0x82, 0x83],  # Maku Tree sprites
+                'impa': [0x84, 0x85],  # Impa (Din's caretaker)
+                'din': [0x86, 0x87, 0x88],  # Din (Oracle of Seasons)
             }
         }
 
@@ -432,6 +440,7 @@ class ZeldaStateEncoder:
         entities = {
             'enemies': [],
             'items': [],
+            'npcs': [],  # Track NPCs for dialogue opportunities
             'total_sprites': 0,
             'unknown_sprites': 0
         }
@@ -481,7 +490,24 @@ class ZeldaStateEncoder:
                             'y': screen_y,
                             'tile_id': tile_id
                         })
+                    elif sprite_type.startswith('npc_'):
+                        npc_type = sprite_type.replace('npc_', '')
+                        entities['npcs'].append({
+                            'type': npc_type,
+                            'x': screen_x,
+                            'y': screen_y,
+                            'tile_id': tile_id
+                        })
                     else:
+                        # Unknown sprite - could be NPC if it's on the ground and not UI
+                        # NPCs are typically stationary sprites on the ground level
+                        if 40 <= screen_y <= 130 and 20 <= screen_x <= 140:
+                            entities['npcs'].append({
+                                'type': 'unknown_npc',
+                                'x': screen_x,
+                                'y': screen_y,
+                                'tile_id': tile_id
+                            })
                         entities['unknown_sprites'] += 1
                         
                 except Exception:
@@ -511,6 +537,11 @@ class ZeldaStateEncoder:
         for item_type, tiles in self.TILE_MAPPINGS['item_tiles'].items():
             if tile_id in tiles:
                 return f'item_{item_type}'
+        
+        # Check NPCs
+        for npc_type, tiles in self.TILE_MAPPINGS['npc_tiles'].items():
+            if tile_id in tiles:
+                return f'npc_{npc_type}'
                 
         return f'unknown_{tile_id:02X}'
 

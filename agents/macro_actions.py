@@ -23,6 +23,15 @@ class MacroType(Enum):
     SOLVE_PUZZLE = "SOLVE_PUZZLE"
     ENTER_DUNGEON = "ENTER_DUNGEON"
     EXIT_DUNGEON = "EXIT_DUNGEON"
+    
+    # 🎯 STRATEGIC MACRO ACTIONS FOR ZELDA GAMEPLAY
+    COMBAT_SWEEP = "COMBAT_SWEEP"        # Systematic area combat with movement
+    CUT_GRASS = "CUT_GRASS"              # Methodical grass cutting for items
+    SEARCH_ITEMS = "SEARCH_ITEMS"        # Thorough item searching pattern
+    ENEMY_HUNT = "ENEMY_HUNT"            # Seek and destroy nearby enemies
+    ENVIRONMENTAL_SEARCH = "ENVIRONMENTAL_SEARCH"  # Cut grass, lift rocks, search
+    COMBAT_RETREAT = "COMBAT_RETREAT"    # Strategic retreat when low health
+    ROOM_CLEARING = "ROOM_CLEARING"      # Complete room exploration + combat
 
 
 @dataclass
@@ -125,9 +134,26 @@ class MacroExecutor:
             return self._expand_enter_dungeon(macro.parameters)
         elif macro.action_type == MacroType.EXIT_DUNGEON:
             return self._expand_exit_dungeon(macro.parameters)
+        
+        # 🎯 STRATEGIC MACRO EXPANSIONS
+        elif macro.action_type == MacroType.COMBAT_SWEEP:
+            return self._expand_combat_sweep(macro.parameters)
+        elif macro.action_type == MacroType.CUT_GRASS:
+            return self._expand_cut_grass(macro.parameters)
+        elif macro.action_type == MacroType.SEARCH_ITEMS:
+            return self._expand_search_items(macro.parameters)
+        elif macro.action_type == MacroType.ENEMY_HUNT:
+            return self._expand_enemy_hunt(macro.parameters)
+        elif macro.action_type == MacroType.ENVIRONMENTAL_SEARCH:
+            return self._expand_environmental_search(macro.parameters)
+        elif macro.action_type == MacroType.COMBAT_RETREAT:
+            return self._expand_combat_retreat(macro.parameters)
+        elif macro.action_type == MacroType.ROOM_CLEARING:
+            return self._expand_room_clearing(macro.parameters)
         else:
-            # Unknown macro type
-            return [ZeldaAction.NOP] * 10
+            # Unknown macro type - default to exploration
+            print(f"⚠️ Unknown macro type: {macro.action_type}")
+            return self._expand_explore_room({})
 
     def _expand_move_to(self, params: Dict[str, Any]) -> List[ZeldaAction]:
         """Expand MOVE_TO macro.
@@ -385,21 +411,291 @@ class MacroExecutor:
 
         return actions
 
+    # 🎯 STRATEGIC MACRO IMPLEMENTATIONS FOR ZELDA GAMEPLAY
+    
+    def _expand_combat_sweep(self, params: Dict[str, Any]) -> List[ZeldaAction]:
+        """Expand COMBAT_SWEEP macro - systematic area combat with movement.
+        
+        Args:
+            params: Combat parameters (intensity, pattern)
+            
+        Returns:
+            Combat sweep action sequence
+        """
+        actions = []
+        intensity = params.get('intensity', 'normal')  # light, normal, aggressive
+        
+        # Aggressive combat pattern: attack while moving in all directions
+        combat_patterns = [
+            # Pattern 1: Slash in all cardinal directions
+            [ZeldaAction.A, ZeldaAction.NOP, ZeldaAction.RIGHT, 
+             ZeldaAction.A, ZeldaAction.NOP, ZeldaAction.DOWN,
+             ZeldaAction.A, ZeldaAction.NOP, ZeldaAction.LEFT,
+             ZeldaAction.A, ZeldaAction.NOP, ZeldaAction.UP],
+             
+            # Pattern 2: Diagonal movement with attacks
+            [ZeldaAction.RIGHT, ZeldaAction.DOWN, ZeldaAction.A,
+             ZeldaAction.LEFT, ZeldaAction.DOWN, ZeldaAction.A, 
+             ZeldaAction.LEFT, ZeldaAction.UP, ZeldaAction.A,
+             ZeldaAction.RIGHT, ZeldaAction.UP, ZeldaAction.A],
+             
+            # Pattern 3: Spin attack simulation
+            [ZeldaAction.A, ZeldaAction.A, ZeldaAction.A,
+             ZeldaAction.RIGHT, ZeldaAction.A, ZeldaAction.DOWN,
+             ZeldaAction.A, ZeldaAction.LEFT, ZeldaAction.A, ZeldaAction.UP]
+        ]
+        
+        # Execute 2-3 combat patterns based on intensity
+        pattern_count = 3 if intensity == 'aggressive' else 2
+        for i in range(pattern_count):
+            pattern = combat_patterns[i % len(combat_patterns)]
+            actions.extend(pattern)
+            actions.extend([ZeldaAction.NOP] * 2)  # Brief pause between patterns
+            
+        print(f"🗡️ Combat sweep: {len(actions)} actions, {intensity} intensity")
+        return actions
+
+    def _expand_cut_grass(self, params: Dict[str, Any]) -> List[ZeldaAction]:
+        """Expand CUT_GRASS macro - methodical grass cutting for items.
+        
+        Args:
+            params: Grass cutting parameters
+            
+        Returns:
+            Grass cutting action sequence
+        """
+        actions = []
+        pattern = params.get('pattern', 'systematic')  # systematic, random, spiral
+        
+        if pattern == 'systematic':
+            # Systematic grid pattern: move and slash
+            for row in range(4):  # Cover 4x4 area
+                for col in range(4):
+                    # Move to position
+                    if col > 0:
+                        actions.append(ZeldaAction.RIGHT)
+                    actions.extend([ZeldaAction.A, ZeldaAction.NOP])  # Cut grass
+                # Move to next row
+                if row < 3:
+                    actions.extend([ZeldaAction.DOWN, ZeldaAction.LEFT] * 4)  # Reset to left side
+                    
+        elif pattern == 'spiral':
+            # Spiral outward pattern
+            directions = [ZeldaAction.RIGHT, ZeldaAction.DOWN, ZeldaAction.LEFT, ZeldaAction.UP]
+            steps = [3, 3, 2, 2, 1, 1]  # Spiral step counts
+            
+            for i, step_count in enumerate(steps):
+                direction = directions[i % 4]
+                for _ in range(step_count):
+                    actions.extend([direction, ZeldaAction.A, ZeldaAction.NOP])
+                    
+        print(f"🌿 Grass cutting: {pattern} pattern, {len(actions)} actions")
+        return actions
+
+    def _expand_search_items(self, params: Dict[str, Any]) -> List[ZeldaAction]:
+        """Expand SEARCH_ITEMS macro - thorough item searching.
+        
+        Args:
+            params: Search parameters
+            
+        Returns:
+            Item search action sequence  
+        """
+        actions = []
+        search_type = params.get('type', 'thorough')  # quick, thorough, exhaustive
+        
+        # Movement + interaction pattern for finding hidden items
+        search_directions = [
+            ZeldaAction.UP, ZeldaAction.RIGHT, ZeldaAction.DOWN, ZeldaAction.LEFT
+        ]
+        
+        if search_type == 'exhaustive':
+            # Check every possible position with A and B buttons
+            for direction in search_directions:
+                actions.extend([direction, ZeldaAction.A, ZeldaAction.B, ZeldaAction.NOP])
+                actions.extend([direction, ZeldaAction.A, ZeldaAction.B, ZeldaAction.NOP])
+        else:
+            # Standard search pattern
+            for direction in search_directions:
+                actions.extend([direction, ZeldaAction.A, ZeldaAction.NOP])
+                
+        # Add some random exploration
+        actions.extend([ZeldaAction.RIGHT, ZeldaAction.A, 
+                       ZeldaAction.DOWN, ZeldaAction.A,
+                       ZeldaAction.LEFT, ZeldaAction.A])
+                       
+        print(f"🔍 Item search: {search_type} mode, {len(actions)} actions")
+        return actions
+
+    def _expand_enemy_hunt(self, params: Dict[str, Any]) -> List[ZeldaAction]:
+        """Expand ENEMY_HUNT macro - seek and destroy nearby enemies.
+        
+        Args:
+            params: Enemy hunting parameters
+            
+        Returns:
+            Enemy hunting action sequence
+        """
+        actions = []
+        aggression = params.get('aggression', 'moderate')  # cautious, moderate, aggressive
+        
+        # Hunting pattern: move + attack in wider areas
+        hunt_pattern = [
+            # Wide sweeping movements to find enemies
+            [ZeldaAction.RIGHT] * 6 + [ZeldaAction.A] * 2,
+            [ZeldaAction.DOWN] * 4 + [ZeldaAction.A] * 2, 
+            [ZeldaAction.LEFT] * 6 + [ZeldaAction.A] * 2,
+            [ZeldaAction.UP] * 4 + [ZeldaAction.A] * 2,
+        ]
+        
+        # Execute hunt patterns
+        for pattern in hunt_pattern:
+            actions.extend(pattern)
+            actions.extend([ZeldaAction.NOP] * 2)
+            
+        if aggression == 'aggressive':
+            # Add extra combat moves
+            actions.extend([ZeldaAction.A] * 8)  # Continuous attacking
+            
+        print(f"👹 Enemy hunt: {aggression} mode, {len(actions)} actions") 
+        return actions
+
+    def _expand_environmental_search(self, params: Dict[str, Any]) -> List[ZeldaAction]:
+        """Expand ENVIRONMENTAL_SEARCH macro - comprehensive environment interaction.
+        
+        Args:
+            params: Environmental search parameters
+            
+        Returns:
+            Environmental interaction sequence
+        """
+        actions = []
+        
+        # Comprehensive environmental interaction:
+        # 1. Cut grass systematically
+        # 2. Try to lift rocks/objects  
+        # 3. Attack anything suspicious
+        # 4. Check walls for secret passages
+        
+        # Phase 1: Systematic grass cutting
+        grass_actions = self._expand_cut_grass({'pattern': 'systematic'})
+        actions.extend(grass_actions[:20])  # First 20 actions
+        
+        # Phase 2: Rock lifting attempts (B button)
+        for direction in [ZeldaAction.UP, ZeldaAction.RIGHT, ZeldaAction.DOWN, ZeldaAction.LEFT]:
+            actions.extend([direction, ZeldaAction.B, ZeldaAction.NOP])
+            
+        # Phase 3: Wall checking (A button at edges)
+        wall_check = [
+            [ZeldaAction.UP] * 8 + [ZeldaAction.A] * 3,      # North wall
+            [ZeldaAction.RIGHT] * 8 + [ZeldaAction.A] * 3,   # East wall  
+            [ZeldaAction.DOWN] * 8 + [ZeldaAction.A] * 3,    # South wall
+            [ZeldaAction.LEFT] * 8 + [ZeldaAction.A] * 3,    # West wall
+        ]
+        
+        for wall in wall_check:
+            actions.extend(wall[:8])  # Limit to 8 actions per wall
+            
+        print(f"🌍 Environmental search: {len(actions)} actions")
+        return actions
+
+    def _expand_combat_retreat(self, params: Dict[str, Any]) -> List[ZeldaAction]:
+        """Expand COMBAT_RETREAT macro - strategic retreat when low health.
+        
+        Args:
+            params: Retreat parameters
+            
+        Returns:
+            Combat retreat sequence
+        """
+        actions = []
+        retreat_style = params.get('style', 'defensive')  # defensive, evasive
+        
+        if retreat_style == 'evasive':
+            # Rapid evasive movements
+            evasion = [ZeldaAction.LEFT, ZeldaAction.RIGHT, ZeldaAction.UP, ZeldaAction.DOWN] * 3
+            actions.extend(evasion)
+        else:
+            # Defensive retreat with occasional attacks
+            defensive_moves = [
+                ZeldaAction.DOWN, ZeldaAction.DOWN, ZeldaAction.A,  # Back up and attack
+                ZeldaAction.LEFT, ZeldaAction.A,                   # Side step and attack  
+                ZeldaAction.RIGHT, ZeldaAction.A,                  # Side step and attack
+                ZeldaAction.UP, ZeldaAction.UP,                    # Move forward carefully
+            ]
+            actions.extend(defensive_moves)
+            
+        print(f"🛡️ Combat retreat: {retreat_style} style, {len(actions)} actions")
+        return actions
+
+    def _expand_room_clearing(self, params: Dict[str, Any]) -> List[ZeldaAction]:
+        """Expand ROOM_CLEARING macro - complete room exploration and combat.
+        
+        Args:
+            params: Room clearing parameters
+            
+        Returns:
+            Room clearing sequence
+        """
+        actions = []
+        thoroughness = params.get('thoroughness', 'complete')  # quick, complete, exhaustive
+        
+        # Phase 1: Combat sweep to clear enemies
+        combat_actions = self._expand_combat_sweep({'intensity': 'normal'})
+        actions.extend(combat_actions[:25])  # First 25 combat actions
+        
+        # Phase 2: Environmental search for items
+        if thoroughness in ['complete', 'exhaustive']:
+            env_actions = self._expand_environmental_search({})
+            actions.extend(env_actions[:30])  # First 30 environmental actions
+            
+        # Phase 3: Final sweep for missed items
+        if thoroughness == 'exhaustive':
+            search_actions = self._expand_search_items({'type': 'thorough'})
+            actions.extend(search_actions[:20])  # First 20 search actions
+            
+        print(f"🏠 Room clearing: {thoroughness} mode, {len(actions)} actions")
+        return actions
+
     def _adapt_to_state(self, current_state: Dict[str, Any]) -> None:
         """Adapt current action queue based on game state.
 
         Args:
             current_state: Current game state
         """
-        # Simple adaptation: if health is low, prioritize defensive actions
+        # Enhanced adaptation with strategic priorities
         try:
-            current_health = current_state['player']['health']
-            max_health = current_state['player']['max_health']
-
-            if current_health < max_health * 0.3:  # Health below 30%
-                # Insert defensive movements
-                defensive_actions = [ZeldaAction.LEFT, ZeldaAction.RIGHT, ZeldaAction.UP, ZeldaAction.DOWN]
+            current_health = current_state.get('player', {}).get('health', 3)
+            max_health = current_state.get('player', {}).get('max_health', 3)
+            entities = current_state.get('entities', {})
+            
+            # 🛡️ HEALTH-BASED ADAPTATION
+            if current_health < max_health * 0.25:  # Health critical (25%)
+                # Emergency retreat pattern
+                emergency_actions = [ZeldaAction.DOWN, ZeldaAction.LEFT, ZeldaAction.DOWN, ZeldaAction.RIGHT]
+                self.primitive_queue = emergency_actions + self.primitive_queue[:5]
+                print(f"🚨 Emergency retreat! Health: {current_health}/{max_health}")
+                
+            elif current_health < max_health * 0.5:  # Health low (50%)
+                # Cautious defensive movements
+                defensive_actions = [ZeldaAction.LEFT, ZeldaAction.RIGHT, ZeldaAction.A]
                 self.primitive_queue = defensive_actions + self.primitive_queue[:10]
+                
+            # ⚔️ ENEMY-BASED ADAPTATION  
+            enemy_count = len(entities.get('enemies', []))
+            if enemy_count > 0 and current_health >= max_health * 0.5:
+                # Prioritize combat when healthy and enemies present
+                combat_actions = [ZeldaAction.A, ZeldaAction.NOP, ZeldaAction.A]
+                self.primitive_queue = combat_actions + self.primitive_queue[:15]
+                print(f"⚔️ Combat priority! {enemy_count} enemies detected")
+                
+            # 💰 ITEM-BASED ADAPTATION
+            item_count = len(entities.get('items', []))
+            if item_count > 0:
+                # Move toward items and interact
+                item_actions = [ZeldaAction.A, ZeldaAction.B, ZeldaAction.A]
+                self.primitive_queue = item_actions + self.primitive_queue[:10]
+                print(f"💰 Items detected! {item_count} items nearby")
 
         except (KeyError, TypeError):
             # Ignore adaptation if state is malformed
