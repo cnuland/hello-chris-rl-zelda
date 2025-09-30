@@ -543,7 +543,8 @@ class StrategicTrainer:
                         print(f"⏱️  Step {step}/{self.config.max_episode_steps}")
                     
                     # 🎯 STRATEGIC ACTION SELECTION WITH PATHFINDING
-                    if strategic_steps_remaining > 0 and current_strategic_action is not None:
+                    # SKIP strategic actions entirely during exploration mode
+                    if strategic_steps_remaining > 0 and current_strategic_action is not None and self.action_translator.exploration_mode_steps_remaining == 0:
                         # Handle specific directional and item actions
                         action_type = last_llm_guidance.get("action", "").upper() if last_llm_guidance else ""
                         
@@ -725,8 +726,8 @@ class StrategicTrainer:
                     # Decrement exploration mode counter
                     if self.action_translator.exploration_mode_steps_remaining > 0:
                         self.action_translator.exploration_mode_steps_remaining -= 1
-                        if step % 100 == 0:  # Log occasionally
-                            print(f"   🔍 EXPLORATION MODE: {self.action_translator.exploration_mode_steps_remaining} steps remaining (pure RL)")
+                        if step % 50 == 0:  # Log occasionally
+                            print(f"   🔍 EXPLORATION MODE ACTIVE: {self.action_translator.exploration_mode_steps_remaining} steps remaining (pure RL - no pathfinding)")
                     
                     # Strategic LLM calls (DISABLED during exploration mode)
                     if step > 0 and step % self.config.llm_call_interval == 0 and self.action_translator.exploration_mode_steps_remaining == 0:
@@ -1090,23 +1091,34 @@ class StrategicTrainer:
                     self.action_translator.screen_exploration_count = {}
                 self.action_translator.screen_exploration_count[current_screen] = 0
                 
-                # FORCE exploration on new screens (UNLESS already in exploration mode!)
+                # FORCE EXPLORATION MODE IMMEDIATELY on new screens!
                 if self.action_translator.exploration_mode_steps_remaining > 0:
-                    # Already exploring - just log the screen change, don't reset
-                    print(f"   🗺️  Screen changed during exploration mode (continuing exploration)")
-                elif not talk_to_npc_ready:  # Only if not already positioned for NPC
-                    situational_priority = """📍 NEW SCREEN DISCOVERED! 🎉
-🎯 MANDATORY: EXPLORE_AREA first - look around the new area!
-💡 After exploring: TALK_TO_NPC if NPCs found, then choose next direction
-⚠️  DON'T rush to next screen - explore this one first!"""
-                    action_override = ["EXPLORE_AREA"]
-                    print(f"   ⚡ NEW SCREEN: Forcing EXPLORE_AREA")
+                    # Already exploring - just log the screen change, don't reset counter
+                    print(f"   🗺️  Screen changed during exploration mode (continuing current exploration)")
+                else:
+                    # NEW SCREEN: Automatically enter exploration mode (no LLM needed!)
+                    self.action_translator.exploration_mode_steps_remaining = 300  # 300 steps of pure RL
+                    print(f"   ✨ NEW SCREEN DETECTED → AUTO-ENTERING EXPLORATION MODE!")
+                    print(f"   🔍 300 steps of pure RL exploration (no pathfinding, no LLM)")
+                    # Clear all strategic state
+                    last_llm_guidance = None
+                    strategic_steps_remaining = 0
+                    current_strategic_action = None
+                    current_action_mode = None
+                    if hasattr(self.action_translator, 'pathfinding_executor'):
+                        self.action_translator.pathfinding_executor.reset_path()
             elif self.action_translator.current_screen_id is None:
-                # First initialization
+                # First initialization - also start exploration mode!
                 self.action_translator.current_screen_id = current_screen
                 if not hasattr(self.action_translator, 'screen_exploration_count'):
                     self.action_translator.screen_exploration_count = {}
                 self.action_translator.screen_exploration_count[current_screen] = 0
+                
+                # Start exploration mode on first screen too
+                if self.action_translator.exploration_mode_steps_remaining == 0:
+                    self.action_translator.exploration_mode_steps_remaining = 300
+                    print(f"   🎮 FIRST SCREEN → AUTO-ENTERING EXPLORATION MODE!")
+                    print(f"   🔍 300 steps of pure RL exploration to start")
             
             # Check if TALK_TO_NPC is being spammed without dialogue triggering
             if last_action == "TALK_TO_NPC":
