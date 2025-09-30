@@ -273,8 +273,8 @@ class HybridRLLLMVisualTrainer:
         self,
         rom_path: str,
         llm_endpoint: str = "http://localhost:8000/v1/chat/completions",
-        llm_frequency: int = 30,
-        llm_guidance_bonus: float = 5.0,
+        llm_frequency: int = 5,
+        llm_guidance_bonus: float = 2.0,
         exploration_steps: int = 300,
         hud_port: int = 8086
     ):
@@ -340,13 +340,26 @@ class HybridRLLLMVisualTrainer:
     
     def start_hud_server(self):
         """Start Flask HUD server in background thread."""
+        import webbrowser
+        
         def run_server():
             app.run(host='0.0.0.0', port=self.hud_port, debug=False, use_reloader=False)
         
         thread = threading.Thread(target=run_server, daemon=True)
         thread.start()
-        time.sleep(1)  # Give server time to start
-        print(f"🌐 HUD server started: http://localhost:{self.hud_port}")
+        time.sleep(2)  # Give server time to start
+        
+        hud_url = f"http://localhost:{self.hud_port}"
+        print(f"🌐 HUD server started: {hud_url}")
+        print(f"🌐 Opening HUD in browser...")
+        
+        # Open browser automatically
+        try:
+            webbrowser.open(hud_url)
+            print(f"✅ HUD opened in browser")
+        except Exception as e:
+            print(f"⚠️  Could not auto-open browser: {e}")
+            print(f"📱 Please open manually: {hud_url}")
     
     def call_llm(self, game_state: Dict) -> tuple:
         """Call LLM for strategic guidance."""
@@ -546,7 +559,8 @@ Strategic priorities:
                 if action_suggestion:
                     self.last_llm_suggestion = action_suggestion
                     self.last_llm_reasoning = reasoning
-                    print(f"   🧠 LLM: {action_suggestion} - {reasoning}")
+                    print(f"   🧠 LLM GUIDANCE: {action_suggestion} | Reason: {reasoning[:50]}...")
+                    print(f"      (+0.5 base guidance reward + alignment bonus if followed)")
             
             # Get PPO action
             obs_tensor = torch.FloatTensor(obs).unsqueeze(0).to(self.controller.device)
@@ -560,8 +574,20 @@ Strategic priorities:
             
             # Compute LLM bonus
             llm_bonus = 0.0
+            llm_guidance_reward = 0.0
+            
             if self.last_llm_suggestion and self.exploration_mode_remaining == 0:
-                llm_bonus = self.compute_llm_alignment_bonus(action_int, self.last_llm_suggestion, game_state)
+                # Small reward just for having LLM guidance available
+                llm_guidance_reward = 0.5
+                
+                # Larger bonus for actually following the guidance
+                alignment_bonus = self.compute_llm_alignment_bonus(action_int, self.last_llm_suggestion, game_state)
+                
+                llm_bonus = llm_guidance_reward + alignment_bonus
+                
+                # Log when agent follows LLM suggestion
+                if alignment_bonus > 0:
+                    print(f"      ✅ PPO followed LLM! Action: {action_names[action_int]} | Bonus: +{llm_bonus:.1f}")
             
             total_reward = reward + llm_bonus
             episode_reward += total_reward
