@@ -76,37 +76,46 @@ class StrategicActionTranslator:
         self.pyboy_instance = pyboy_instance
     
     def intelligent_exploration_action(self, step: int, action_space_size: int) -> int:
-        """Generate intelligent exploration actions focused on CURRENT screen exploration.
+        """Generate TRULY RANDOM exploration actions with weighted probabilities.
         
-        Pattern (per 100 steps):
-        - 50 steps: Short random movements (1-3 steps in each direction) to cover screen area
-        - 30 steps: A button repeatedly (interact with NPCs, objects, dialogue)
-        - 15 steps: Small circles/patterns to position near objects
-        - 5 steps: NOP (pause to let things settle)
-        
-        This avoids screen transitions during exploration!
+        This creates natural, human-like exploration:
+        - Lots of movement in all directions
+        - Frequent A button (talk to NPCs, interact)
+        - Some B button (secondary actions)
+        - Occasional START (check map/menu)
+        - Occasional SELECT (item switching)
+        - Some pauses (NOP)
         """
         import random
         
-        # Create a 100-step cycle for systematic exploration
-        cycle = step % 100
+        # Weighted random action selection for natural exploration
+        # Actions: 0=NOP, 1=UP, 2=DOWN, 3=LEFT, 4=RIGHT, 5=A, 6=B, 7=START, 8=SELECT
         
-        if cycle < 50:  # First 50 steps: SHORT random movements
-            # Very short movements to avoid screen transitions
-            if cycle % 5 == 0:
-                return 0  # NOP occasionally to avoid rushing
+        rand = random.random()
+        
+        # 50% movement (spread across all 4 directions)
+        if rand < 0.50:
             return random.choice([1, 2, 3, 4])  # UP, DOWN, LEFT, RIGHT
         
-        elif cycle < 80:  # Next 30 steps: A button spam (find NPCs!)
-            # Lots of A button to trigger any nearby NPCs/dialogue
+        # 25% A button (interact, talk to NPCs)
+        elif rand < 0.75:
             return 5  # A button
         
-        elif cycle < 95:  # Next 15 steps: Small repositioning
-            # Tiny movements to get closer to detected objects
-            return random.choice([1, 2, 3, 4])
+        # 10% B button (secondary actions)
+        elif rand < 0.85:
+            return 6  # B button
         
-        else:  # Last 5 steps: pause
-            return 0  # NOP (pause)
+        # 5% START (check map/menu)
+        elif rand < 0.90:
+            return 7  # START
+        
+        # 3% SELECT (item switching)
+        elif rand < 0.93:
+            return 8  # SELECT
+        
+        # 7% NOP (pause, let things settle)
+        else:
+            return 0  # NOP
     
     def translate_llm_to_strategic_action(self, llm_guidance: Dict[str, str], action_space_size: int, game_state: Dict = None) -> Tuple[int, int, str]:
         """Translate LLM guidance into strategic game actions based on available items.
