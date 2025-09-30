@@ -8,7 +8,7 @@ from enum import Enum
 from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass
 import math
-from ..emulator.input_map import ZeldaAction
+from emulator.input_map import ZeldaAction
 
 
 class MacroType(Enum):

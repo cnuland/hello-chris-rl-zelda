@@ -14,9 +14,9 @@ from dataclasses import dataclass
 import asyncio
 from enum import Enum
 
-from .planner import ZeldaPlanner, MockPlanner
-from .macro_actions import MacroExecutor, MacroAction
-from ..emulator.input_map import ZeldaAction
+from agents.planner import ZeldaPlanner, MockPlanner
+from agents.macro_actions import MacroExecutor, MacroAction
+from emulator.input_map import ZeldaAction
 
 
 class ArbitrationTrigger(Enum):
