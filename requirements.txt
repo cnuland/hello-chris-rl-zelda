@@ -7,11 +7,19 @@ torch==2.1.0
 torchvision==0.16.0
 numpy==1.24.4
 
+# Ray RLlib for distributed training
+ray[rllib]==2.8.0
+ray[tune]==2.8.0
+ray[default]==2.8.0
+
 # Image and visualization
 opencv-python==4.8.1.78
 matplotlib==3.7.2
 seaborn==0.12.2
 Pillow==10.0.1
+einops==0.6.1
+scikit-image==0.21.0
+mediapy @ git+https://github.com/PWhiddy/mediapy.git@45101800d4f6adeffe814cad93de1db67c1bd614
 
 # Logging and monitoring
 wandb==0.15.12
@@ -73,6 +81,12 @@ mypy==1.6.1
 pickle5==0.0.12
 joblib==1.3.2
 
+# Cloud storage
+boto3==1.28.85
+
 # Memory profiling (optional)
 psutil==5.9.6
 memory-profiler==0.61.0
+
+# CodeFlare SDK for KubeRay deployment
+codeflare-sdk==0.12.0
