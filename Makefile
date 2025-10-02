@@ -23,38 +23,38 @@ SESSIONS ?= 5
 EPISODES ?= 20  
 EPOCHS ?= 4
 BATCH_SIZE ?= 256
-CHECKPOINT ?= 
+CHECKPOINT ?=   # Optional checkpoint file for resuming training 
 
-.PHONY: help install llm-serve llm-stop llm-status clean headless visual inference hybrid-visual run-all core-help
+.PHONY: help install llm-serve llm-stop llm-status clean headless visual inference hybrid-visual hybrid-headless run-all core-help
 
 help: ## Show available commands and Strategic Training Framework overview
 	@echo "🎯 Zelda-LLM-RL Strategic Training Framework"
 	@echo "=========================================="
 	@echo ""
-	@echo "🚀 HYBRID RL+LLM COMMANDS:"
-	@echo "  hybrid-visual - 🆕 True hybrid RL+LLM (PPO learning + LLM button guidance)"
+	@echo "🚀 VISION HYBRID RL+LLM COMMANDS (NEW!):"
+	@echo "  hybrid-visual   - 🆕 Vision hybrid with Game Boy screenshots (with PyBoy window)"
+	@echo "  hybrid-headless - 🆕 Vision hybrid training (headless, fast)"
 	@echo ""
 	@echo "🚀 STRATEGIC FRAMEWORK COMMANDS:"
 	@echo "  headless      - Strategic headless training (production, breakthrough results)"
 	@echo "  visual        - Strategic visual training (PyBoy + Web HUD + framework demo)"
 	@echo "  inference     - Strategic model inference (trained AI demonstration)"
 	@echo ""
-	@echo "🧠 MLX LLM SERVER (Qwen2.5-14B-Instruct-4bit):"
+	@echo "🧠 MLX LLM SERVER (Vision LLM - Llama-4-Scout-17B):"
 	@echo "  llm-serve     - Start MLX server (Apple Silicon optimized)"  
 	@echo "  llm-stop      - Stop MLX server"
 	@echo "  llm-status    - Check server connectivity and model status"
 	@echo ""
-	@echo "🎯 STRATEGIC TRAINING FRAMEWORK:"
-	@echo "  - Unified framework (strategic_training_framework.py)"
-	@echo "  - Strategic action translation (LLM commands → game actions)"
-	@echo "  - Strategic reward system (5X LLM emphasis)"
-	@echo "  - Strategic environment factory (proven configurations)"
-	@echo "  - 55x-220x performance improvement vs random policy"
+	@echo "🎯 VISION HYBRID FEATURES:"
+	@echo "  - PPO neural network for fast vector-based learning"
+	@echo "  - Vision LLM analyzes actual Game Boy screenshots"
+	@echo "  - Strategic guidance based on visual understanding"
+	@echo "  - Progression-focused rewards (Maku Tree, dungeons)"
+	@echo "  - Configuration-based prompts (configs/vision_prompt.yaml)"
 	@echo ""
-	@echo "⚔️  STRATEGIC MACRO ACTIONS:"
-	@echo "  - COMBAT_SWEEP, CUT_GRASS, ENEMY_HUNT, ROOM_CLEARING"
-	@echo "  - Strategic environmental interaction vs random movement"
-	@echo "  - Real-time MLX LLM strategic decision making"
+	@echo "📍 CURRENT MISSION:"
+	@echo "  - Navigate to Maku Tree → Wake tree → Get Gnarled Key → Enter dungeon"
+	@echo "  - Vision LLM provides directional guidance from screenshots"
 	@echo ""
 	@echo "🛠️  UTILITIES:"
 	@echo "  install       - Install dependencies + MLX"
@@ -62,7 +62,7 @@ help: ## Show available commands and Strategic Training Framework overview
 	@echo "  run-all       - Demo all strategic modes"
 	@echo "  core-help     - Strategic framework detailed help"
 	@echo ""
-	@echo "🚀 Quick Start: make llm-serve && make visual"
+	@echo "🚀 Quick Start: make llm-serve && make hybrid-visual"
 
 install: ## Install project dependencies
 	$(PYTHON) -m pip install -r requirements.txt
@@ -147,37 +147,88 @@ visual: ## Strategic visual training with unified framework + PyBoy + Web HUD
 	$(PYTHON) train_visual_strategic.py
 
 # ========================================
-# 🚀 NEW: HYBRID RL+LLM VISUAL TRAINING  
+# 🚀 NEW: VISION HYBRID RL+LLM TRAINING  
 # ========================================
 
-hybrid-visual: ## 🆕 True hybrid RL+LLM with PPO learning + LLM button guidance
-	@echo "🤖 HYBRID RL+LLM VISUAL TRAINING"
+hybrid-visual: ## 🆕 Vision-capable hybrid RL+LLM with actual Game Boy screenshots
+	@echo "🤖 VISION HYBRID RL+LLM TRAINING"
 	@echo "================================="
 	@echo ""
 	@echo "🧠 AI Architecture:"
-	@echo "   - PPO Neural Network: Learning from experience"
-	@echo "   - LLM Guidance: Direct Game Boy button suggestions (UP, DOWN, A, B, etc.)"
-	@echo "   - Reward Shaping: Bonuses for following LLM guidance"
-	@echo "   - Auto-Exploration: Pure PPO learning on new screens (300 steps)"
+	@echo "   - PPO Neural Network: Vector observations for fast learning"
+	@echo "   - Vision LLM: Analyzes actual Game Boy screenshots"
+	@echo "   - Strategic Guidance: LLM suggests buttons based on visual context"
+	@echo "   - Reward Shaping: Massive bonuses for progression milestones"
 	@echo ""
 	@echo "🎮 Features:"
-	@echo "   - PyBoy emulator window (watch PPO agent learn)"
-	@echo "   - Web HUD at http://localhost:8086 (live LLM button commands)"
-	@echo "   - Rich game context: Location names, NPC detection, room mapping"
-	@echo "   - Simple LLM output: Direct button presses (UP, DOWN, LEFT, RIGHT, A, B, START, SELECT, NOP)"
+	@echo "   - PyBoy emulator window (watch agent play)"
+	@echo "   - Vision LLM sees actual game screens (320×288 JPEG)"
+	@echo "   - Rich game context: Maku Tree, dungeons, NPCs, items"
+	@echo "   - Smart guidance: Direct button presses with visual understanding"
 	@echo ""
-	@echo "📊 Training Details:"
-	@echo "   - LLM calls: Every 5 steps (very frequent guidance with MLX caching)"
-	@echo "   - Exploration mode: 300 steps of pure PPO per new screen"
-	@echo "   - Base guidance reward: +0.5 per step with LLM available"
-	@echo "   - Alignment bonuses: +2-6x reward for following LLM button suggestions"
-	@echo "   - Context-aware bonuses: Extra rewards for smart actions (A near NPCs, retreat when low health)"
+	@echo "📊 Current Mission:"
+	@echo "   - Starting point: Horon Village entrance (Link has Wooden Sword)"
+	@echo "   - Objective 1: Navigate EAST then NORTH to Maku Tree grove"
+	@echo "   - Objective 2: Slash gate with B button, wake Maku Tree"
+	@echo "   - Objective 3: Get Gnarled Key, find first dungeon"
 	@echo ""
-	@echo "🚀 Starting hybrid RL+LLM training..."
-	@echo "📱 HUD will open in browser automatically"
+	@echo "💰 Reward System:"
+	@echo "   - Maku Tree entry: +300 reward, 20x multiplier"
+	@echo "   - Dungeon entry: +400 reward, 15x multiplier"
+	@echo "   - Sword usage (B button): 8x multiplier"
+	@echo "   - Building entry: 12x multiplier"
+	@echo ""
+	@if [ -n "$(CHECKPOINT)" ]; then \
+		echo "📂 Loading checkpoint: $(CHECKPOINT)"; \
+	fi
+	@echo "🚀 Starting vision hybrid training..."
 	@echo "🎮 PyBoy window will show agent learning"
 	@echo ""
-	$(PYTHON) train_hybrid_visual.py --steps 5000
+	$(PYTHON) train_hybrid_vision.py \
+		--rom-path roms/zelda_oracle_of_seasons.gbc \
+		--enable-vision \
+		--total-timesteps 10000 \
+		--config configs/vision_prompt.yaml \
+		$(if $(CHECKPOINT),--checkpoint $(CHECKPOINT),)
+
+hybrid-headless: ## 🆕 Vision hybrid headless training (fast, production)
+	@echo "🤖 VISION HYBRID HEADLESS TRAINING"
+	@echo "===================================="
+	@echo ""
+	@echo "🧠 AI Architecture:"
+	@echo "   - PPO Neural Network: Vector observations for fast learning"
+	@echo "   - Vision LLM: Analyzes actual Game Boy screenshots"
+	@echo "   - Strategic Guidance: LLM suggests buttons based on visual context"
+	@echo "   - Reward Shaping: Massive bonuses for progression milestones"
+	@echo ""
+	@echo "⚡ Performance:"
+	@echo "   - Headless mode (no GUI) for maximum speed"
+	@echo "   - ~3000+ steps/second training rate"
+	@echo "   - Vision LLM calls every 10 steps"
+	@echo ""
+	@echo "📊 Default Configuration:"
+	@echo "   - Total timesteps: 400,000 (adjustable)"
+	@echo "   - Episode length: 8,000 steps (long episodes for progression)"
+	@echo "   - Expected duration: 8-10 hours"
+	@echo ""
+	@echo "💰 Reward System:"
+	@echo "   - Maku Tree entry: +300 reward, 20x multiplier"
+	@echo "   - Dungeon entry: +400 reward, 15x multiplier"
+	@echo "   - Sword usage: 8x multiplier"
+	@echo "   - Exploration bonuses with time decay"
+	@echo ""
+	@if [ -n "$(CHECKPOINT)" ]; then \
+		echo "📂 Loading checkpoint: $(CHECKPOINT)"; \
+	fi
+	@echo "🚀 Starting vision hybrid headless training..."
+	@echo ""
+	$(PYTHON) train_hybrid_vision.py \
+		--rom-path roms/zelda_oracle_of_seasons.gbc \
+		--headless \
+		--enable-vision \
+		--total-timesteps 400000 \
+		--config configs/vision_prompt.yaml \
+		$(if $(CHECKPOINT),--checkpoint $(CHECKPOINT),)
 
 # ========================================
 # 🚀 CORE AREA 3: VISUAL INFERENCE  

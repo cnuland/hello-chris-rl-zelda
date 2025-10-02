@@ -594,6 +594,7 @@ def main():
     parser.add_argument("--enable-vision", action="store_true", help="Enable vision mode")
     parser.add_argument("--image-scale", type=int, default=None, help="Image upscale factor (overrides config)")
     parser.add_argument("--image-quality", type=int, default=None, help="JPEG quality 0-100 (overrides config)")
+    parser.add_argument("--checkpoint", type=str, default=None, help="Path to checkpoint file to load")
     
     args = parser.parse_args()
     
@@ -607,6 +608,12 @@ def main():
         image_quality=args.image_quality,
         config_path=args.config
     )
+    
+    # Load checkpoint if provided
+    if args.checkpoint:
+        print(f"📂 Loading checkpoint: {args.checkpoint}")
+        trainer.controller.load_checkpoint(args.checkpoint)
+        print("✅ Checkpoint loaded successfully!")
     
     trainer.train(total_timesteps=args.total_timesteps)
 
