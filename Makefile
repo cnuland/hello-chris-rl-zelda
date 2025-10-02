@@ -13,8 +13,8 @@
 # - 55x-220x performance improvement vs random policy
 # - Real-time strategic decision making via MLX Qwen2.5-14B
 
-# MLX Configuration for Qwen2.5 Model (Apple Silicon optimized)
-VLLM_MODEL := mlx-community/Qwen2.5-14B-Instruct-4bit
+# MLX Configuration for Llama-4-Scout Model (Apple Silicon optimized)
+VLLM_MODEL := mlx-community/meta-llama-Llama-4-Scout-17B-16E-4bit
 VLLM_PORT := 8000
 PYTHON := python3
 

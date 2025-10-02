@@ -106,12 +106,26 @@ class ZeldaConfigurableEnvironment(gym.Env):
 
         # Gymnasium spaces
         self.action_space = spaces.Discrete(len(ZeldaAction))
-        self.observation_space = spaces.Box(
-            low=0.0,
-            high=1.0,
-            shape=(self.state_encoder.state_vector_size,),
-            dtype=np.float32
-        )
+        
+        # Setup observation space based on observation type
+        if self.observation_type == 'visual':
+            # Visual observations: Grayscale Game Boy screen (144×160×1)
+            self.observation_space = spaces.Box(
+                low=0,
+                high=255,
+                shape=(144, 160, 1),  # (height, width, channels)
+                dtype=np.uint8
+            )
+            print("🎮 Visual observation mode: Screen pixels (144×160×1)")
+        else:
+            # Vector observations: State encoder vector
+            self.observation_space = spaces.Box(
+                low=0.0,
+                high=1.0,
+                shape=(self.state_encoder.state_vector_size,),
+                dtype=np.float32
+            )
+            print(f"📊 Vector observation mode: {self.state_encoder.state_vector_size} features")
 
         # Environment state
         self.current_structured_state: Optional[Dict[str, Any]] = None
@@ -250,31 +264,51 @@ class ZeldaConfigurableEnvironment(gym.Env):
         return obs, reward, terminated, truncated, info
 
     def _get_observation(self) -> np.ndarray:
-        """Get current observation vector."""
+        """Get current observation (vector or visual based on mode)."""
         import time
         
-        # Get raw game state
-        raw_state = self.bridge.get_game_state()
+        # Visual observation mode
+        if self.observation_type == 'visual':
+            # Get screen pixels
+            screen_rgb = self.bridge.get_screen()  # (144, 160, 3)
+            
+            # Convert to grayscale
+            grayscale = np.dot(screen_rgb[...,:3], [0.299, 0.587, 0.114])
+            
+            # Add channel dimension: (144, 160) → (144, 160, 1)
+            observation = np.expand_dims(grayscale, axis=-1).astype(np.uint8)
+            
+            # Still generate structured state for LLM if needed
+            if self.enable_structured_states:
+                struct_start_time = time.time()
+                _, structured_state = self.state_encoder.encode_state(self.bridge)
+                self.previous_structured_state = self.current_structured_state
+                self.current_structured_state = structured_state
+                self.structured_state_generation_time += time.time() - struct_start_time
+            
+            return observation
         
-        if self.enable_structured_states:
-            # Generate structured state (slower but needed for LLM)
-            struct_start_time = time.time()
-            numeric_vector, structured_state = self.state_encoder.encode_state(self.bridge)
-            self.previous_structured_state = self.current_structured_state
-            self.current_structured_state = structured_state
-            self.structured_state_generation_time += time.time() - struct_start_time
-            
-            # Return numeric vector for RL
-            obs = numeric_vector
+        # Vector observation mode (original)
         else:
-            # Fast path for pure RL - no structured state generation
-            obs, _ = self.state_encoder.encode_state(self.bridge)
-            
-        # Normalize if configured
-        if self.normalize_observations:
-            obs = np.clip(obs, 0.0, 1.0)
-            
-        return obs.astype(np.float32)
+            if self.enable_structured_states:
+                # Generate structured state (slower but needed for LLM)
+                struct_start_time = time.time()
+                numeric_vector, structured_state = self.state_encoder.encode_state(self.bridge)
+                self.previous_structured_state = self.current_structured_state
+                self.current_structured_state = structured_state
+                self.structured_state_generation_time += time.time() - struct_start_time
+                
+                # Return numeric vector for RL
+                obs = numeric_vector
+            else:
+                # Fast path for pure RL - no structured state generation
+                obs, _ = self.state_encoder.encode_state(self.bridge)
+                
+            # Normalize if configured
+            if self.normalize_observations:
+                obs = np.clip(obs, 0.0, 1.0)
+                
+            return obs.astype(np.float32)
 
     def _calculate_reward(self, base_reward: float) -> float:
         """Calculate reward with enhanced exploration bonuses."""

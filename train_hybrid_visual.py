@@ -275,14 +275,12 @@ class HybridRLLLMVisualTrainer:
         llm_endpoint: str = "http://localhost:8000/v1/chat/completions",
         llm_frequency: int = 5,
         llm_guidance_bonus: float = 2.0,
-        exploration_steps: int = 300,
         hud_port: int = 8086
     ):
         self.rom_path = rom_path
         self.llm_endpoint = llm_endpoint
         self.llm_frequency = llm_frequency
         self.llm_guidance_bonus = llm_guidance_bonus
-        self.exploration_steps = exploration_steps
         self.hud_port = hud_port
         
         # Initialize environment with visual mode
@@ -327,8 +325,6 @@ class HybridRLLLMVisualTrainer:
         # Training state
         self.global_step = 0
         self.episode_count = 0
-        self.current_screen_id = None
-        self.exploration_mode_remaining = 0
         self.last_llm_suggestion = None
         self.last_llm_reasoning = ""
         self.llm_call_count = 0
@@ -364,7 +360,7 @@ class HybridRLLLMVisualTrainer:
     def call_llm(self, game_state: Dict) -> tuple:
         """Call LLM for strategic guidance."""
         try:
-            from observation.ram_maps.room_mappings import overworld_rooms
+            from observation.ram_maps.room_mappings import OVERWORLD_ROOMS
             
             player = game_state.get('player', {})
             entities = game_state.get('entities', {})
@@ -378,7 +374,7 @@ class HybridRLLLMVisualTrainer:
             direction = player.get('direction', 0)
             
             # Get location name
-            location = overworld_rooms.get(room_id, f"Unknown Room {room_id}")
+            location = OVERWORLD_ROOMS.get(room_id, f"Unknown Room {room_id}")
             
             # NPC and enemy info
             npcs = entities.get('npcs', [])
@@ -524,7 +520,6 @@ Strategic priorities:
         print(f"=" * 60)
         print(f"🧠 PPO Neural Network: Learning from experience")
         print(f"💡 LLM Guidance: Every {self.llm_frequency} steps")
-        print(f"🔍 Auto-Exploration: {self.exploration_steps} steps per new screen")
         print(f"🎮 PyBoy Window: Visible")
         print(f"🌐 Web HUD: http://localhost:{self.hud_port}")
         print(f"📊 Steps: {num_steps}")
@@ -534,33 +529,36 @@ Strategic priorities:
         episode_reward = 0.0
         action_names = ["NOP", "UP", "DOWN", "LEFT", "RIGHT", "A", "B", "START", "SELECT"]
         
+        # Initial LLM call to populate HUD
+        game_state = info.get('structured_state', {})
+        print("   🎯 Making initial LLM call...")
+        action_suggestion, reasoning = self.call_llm(game_state)
+        if action_suggestion:
+            self.last_llm_suggestion = action_suggestion
+            self.last_llm_reasoning = reasoning
+            print(f"   🧠 Initial LLM GUIDANCE: {action_suggestion}")
+        
         for step in range(num_steps):
+            # Progress indicator
+            if step % 10 == 0:
+                print(f"   ⏱️  Step {step}/{num_steps}")
             # Get game state
             game_state = info.get('structured_state', {})
             current_room = game_state.get('player', {}).get('room', 0)
             npcs = len(game_state.get('entities', {}).get('npcs', []))
             health = game_state.get('player', {}).get('health', 3)
             
-            # Track screen changes
-            if self.current_screen_id != current_room:
-                if self.current_screen_id is not None:
-                    print(f"   🗺️  New screen: {current_room} → Exploration mode")
-                self.current_screen_id = current_room
-                self.exploration_mode_remaining = self.exploration_steps
-            
-            # Update exploration counter
-            if self.exploration_mode_remaining > 0:
-                self.exploration_mode_remaining -= 1
-            
-            # Call LLM
-            if (step > 0 and step % self.llm_frequency == 0 and 
-                self.exploration_mode_remaining == 0):
+            # Call LLM every 5 steps (starting from step 5)
+            if step >= self.llm_frequency and step % self.llm_frequency == 0:
+                print(f"   📞 Calling LLM at step {step}...")
                 action_suggestion, reasoning = self.call_llm(game_state)
                 if action_suggestion:
                     self.last_llm_suggestion = action_suggestion
                     self.last_llm_reasoning = reasoning
                     print(f"   🧠 LLM GUIDANCE: {action_suggestion} | Reason: {reasoning[:50]}...")
                     print(f"      (+0.5 base guidance reward + alignment bonus if followed)")
+                else:
+                    print(f"   ⚠️  LLM call failed: {reasoning}")
             
             # Get PPO action
             obs_tensor = torch.FloatTensor(obs).unsqueeze(0).to(self.controller.device)
@@ -576,7 +574,7 @@ Strategic priorities:
             llm_bonus = 0.0
             llm_guidance_reward = 0.0
             
-            if self.last_llm_suggestion and self.exploration_mode_remaining == 0:
+            if self.last_llm_suggestion:
                 # Small reward just for having LLM guidance available
                 llm_guidance_reward = 0.5
                 
@@ -592,6 +590,7 @@ Strategic priorities:
             total_reward = reward + llm_bonus
             episode_reward += total_reward
             self.total_reward += total_reward
+            self.global_step += 1
             
             # Update HUD
             llm_success_rate = (self.llm_success_count / self.llm_call_count * 100) if self.llm_call_count > 0 else 0
@@ -606,8 +605,8 @@ Strategic priorities:
                 llm_bonus=llm_bonus,
                 policy_loss=0.0,  # Will update during training
                 value_loss=0.0,
-                exploration_mode=self.exploration_mode_remaining > 0,
-                exploration_remaining=self.exploration_mode_remaining,
+                exploration_mode=False,
+                exploration_remaining=0,
                 llm_success_rate=llm_success_rate,
                 current_room=current_room,
                 npcs_nearby=npcs,

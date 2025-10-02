@@ -2,9 +2,9 @@
 
 True hybrid approach:
 - PPO neural network learns from experience
-- LLM provides periodic guidance
+- LLM provides periodic guidance every 5 steps
 - Reward shaping when agent follows LLM suggestions
-- Exploration mode = pure PPO policy
+- PPO makes all action decisions, LLM only guides
 """
 
 import os
@@ -27,16 +27,14 @@ class HybridRLLLMTrainer:
         rom_path: str,
         headless: bool = True,
         llm_endpoint: str = "http://localhost:8000/v1/chat/completions",
-        llm_frequency: int = 30,  # Call LLM every N steps
-        llm_guidance_bonus: float = 5.0,  # Bonus reward multiplier for following LLM
-        exploration_steps: int = 300,  # Steps of pure PPO per new screen
+        llm_frequency: int = 5,  # Call LLM every N steps
+        llm_guidance_bonus: float = 5.0  # Bonus reward multiplier for following LLM
     ):
         self.rom_path = rom_path
         self.headless = headless
         self.llm_endpoint = llm_endpoint
         self.llm_frequency = llm_frequency
         self.llm_guidance_bonus = llm_guidance_bonus
-        self.exploration_steps = exploration_steps
         
         # Initialize environment with LLM-friendly structured states
         env_config = {
@@ -80,44 +78,108 @@ class HybridRLLLMTrainer:
         # Training state
         self.global_step = 0
         self.episode_count = 0
-        self.current_screen_id = None
-        self.exploration_mode_remaining = 0
         self.last_llm_suggestion = None
         self.llm_call_count = 0
         self.llm_success_count = 0
         
+        # NPC tracking
+        self.npc_interactions = 0
+        self.a_button_near_npc_count = 0
+        self.npc_bonus_rewards = 0
+        
+        # Room/Location tracking
+        self.visited_rooms = set()
+        self.room_discovery_count = 0
+        
+        # Advanced exploration tracking with time-based decay
+        self.position_history = []  # List of (x, y, room, timestep)
+        self.area_visit_times = {}  # {(room, x//8, y//8): [timesteps]} - grid-based (8x8 pixels)
+        self.last_position = None
+        self.stationary_steps = 0
+        self.decay_window = 500  # Steps before an area can be revisited without penalty
+        self.exploration_bonus_multiplier = 5.0  # Even stronger exploration rewards  
+        self.grid_size = 8  # Smaller grid cells for easier exploration
+        self.penalty_warmup_steps = 1000  # Don't apply penalties for first 1000 steps (let agent learn to move)
+        
     def call_llm(self, game_state: Dict) -> Optional[str]:
-        """Call LLM for strategic guidance.
+        """Call LLM for strategic guidance with specific button recommendations.
         
         Args:
             game_state: Current structured game state
             
         Returns:
-            LLM suggested action string, or None if failed
+            LLM suggested button string, or None if failed
         """
         try:
-            # Extract context from game state
-            player = game_state.get('player', {})
-            health = player.get('health', 3)
-            room = player.get('room', 0)
-            npcs = len(game_state.get('entities', {}).get('npcs', []))
+            from observation.ram_maps.room_mappings import OVERWORLD_ROOMS
             
-            # Create prompt
-            prompt = f"""You are guiding an RL agent playing Zelda: Oracle of Seasons.
+            player = game_state.get('player', {})
+            entities = game_state.get('entities', {})
+            
+            # Extract detailed game state
+            health = player.get('health', 3)
+            max_health = player.get('max_health', 3)
+            room_id = player.get('room', 0)
+            x = player.get('x', 0)
+            y = player.get('y', 0)
+            direction = player.get('direction', 0)
+            
+            # Get location name
+            location = OVERWORLD_ROOMS.get(room_id, f"Unknown Room {room_id}")
+            
+            # NPC and enemy info
+            npcs = entities.get('npcs', [])
+            enemies = entities.get('enemies', [])
+            items = entities.get('items', [])
+            
+            npc_info = ""
+            if npcs:
+                npc_list = ", ".join([f"{npc.get('type', 'unknown')} at ({npc.get('x', 0)}, {npc.get('y', 0)})" for npc in npcs[:3]])
+                npc_info = f"\n- NPCs: {len(npcs)} nearby ({npc_list})"
+            
+            enemy_info = ""
+            if enemies:
+                enemy_info = f"\n- Enemies: {len(enemies)} present"
+            
+            item_info = ""
+            if items:
+                item_info = f"\n- Items: {len(items)} visible"
+            
+            direction_names = {0: "Down", 1: "Up", 2: "Left", 3: "Right"}
+            
+            prompt = f"""You are guiding a PPO neural network learning to play Zelda: Oracle of Seasons.
 
-Current State:
-- Health: {health} hearts
-- Room: {room}
-- NPCs nearby: {npcs}
-- Agent is learning through PPO reinforcement learning
+🗺️ LOCATION:
+- Current Room: {location} (ID: {room_id})
+- Link Position: ({x}, {y})
+- Facing: {direction_names.get(direction, 'Unknown')}
 
-Provide ONE strategic suggestion to guide learning:
-- GO_NORTH/GO_SOUTH/GO_EAST/GO_WEST: Navigate to new areas
-- TALK_TO_NPC: Interact with NPCs (only if NPCs are nearby!)
-- EXPLORE_AREA: Search current area
-- AVOID_ENEMIES: Retreat from danger
+❤️ STATUS:
+- Health: {health}/{max_health} hearts
 
-Respond with ONLY the action name, nothing else."""
+🎮 ENVIRONMENT:{npc_info}{enemy_info}{item_info}
+
+Your job: Suggest ONE Game Boy button to help the RL agent learn optimal gameplay.
+
+AVAILABLE BUTTONS:
+- UP, DOWN, LEFT, RIGHT (movement - PREFERRED for exploration)
+- A (attack/interact/confirm - PREFERRED for NPCs/items)
+- B (use item/cancel)
+- NOP (wait/observe)
+
+AVOID THESE (agent can't use menus with current observations):
+- START (menu - NOT USEFUL)
+- SELECT (map - NOT USEFUL)
+
+Respond with ONLY the button name, nothing else.
+
+Strategic priorities:
+1. MOVEMENT (UP/DOWN/LEFT/RIGHT) - explore new areas
+2. A BUTTON near NPCs - talk and interact
+3. A BUTTON - collect items and interact with environment
+4. Avoid damage - retreat with directional buttons when low health
+
+Focus on MOVEMENT and A button - these create the most learning signal."""
 
             response = requests.post(
                 self.llm_endpoint,
@@ -128,17 +190,17 @@ Respond with ONLY the action name, nothing else."""
                         {"role": "user", "content": prompt}
                     ],
                     "temperature": 0.7,
-                    "max_tokens": 50
+                    "max_tokens": 20
                 },
                 timeout=10.0
             )
             
             if response.status_code == 200:
                 result = response.json()
-                action = result['choices'][0]['message']['content'].strip()
+                button = result['choices'][0]['message']['content'].strip().upper()
                 self.llm_call_count += 1
                 self.llm_success_count += 1
-                return action
+                return button
             else:
                 print(f"⚠️  LLM call failed: {response.status_code}")
                 self.llm_call_count += 1
@@ -149,17 +211,84 @@ Respond with ONLY the action name, nothing else."""
             self.llm_call_count += 1
             return None
     
+    def compute_exploration_reward(
+        self,
+        game_state: Dict,
+        current_step: int
+    ) -> float:
+        """Compute exploration rewards with time-based decay for revisited areas.
+        
+        Args:
+            game_state: Current game state with player position
+            current_step: Current global step count
+            
+        Returns:
+            Exploration reward (can be negative for loitering)
+        """
+        player = game_state.get('player', {})
+        x = player.get('x', 0)
+        y = player.get('y', 0)
+        room = player.get('room', 0)
+        
+        current_pos = (x, y, room)
+        
+        # Grid cell (configurable pixel regions)
+        grid_x = x // self.grid_size
+        grid_y = y // self.grid_size
+        grid_cell = (room, grid_x, grid_y)
+        
+        reward = 0.0
+        
+        # During warmup period: ONLY give bonuses, NO penalties (let agent learn to move first)
+        warmup_active = current_step < self.penalty_warmup_steps
+        
+        # 1. PENALTY: Standing completely still (only after warmup)
+        if not warmup_active:
+            if self.last_position is not None and self.last_position == current_pos:
+                self.stationary_steps += 1
+                # Gentler increasing penalty for staying still (max -2.0)
+                reward -= min(self.stationary_steps * 0.2, 2.0)
+            else:
+                self.stationary_steps = 0
+        
+        # 2. AREA REVISIT with DECAY
+        if grid_cell in self.area_visit_times:
+            last_visit_time = self.area_visit_times[grid_cell][-1]
+            time_since_visit = current_step - last_visit_time
+            
+            if not warmup_active and time_since_visit < self.decay_window:
+                # Recently visited - apply gentle penalty that decreases with time (only after warmup)
+                decay_factor = 1.0 - (time_since_visit / self.decay_window)
+                loiter_penalty = -0.8 * decay_factor  # Reduced from -2.0
+                reward += loiter_penalty
+            elif time_since_visit >= self.decay_window:
+                # Decayed - can revisit without penalty (backtracking allowed)
+                # Small bonus for productive backtracking
+                reward += 0.5
+            
+            self.area_visit_times[grid_cell].append(current_step)
+        else:
+            # NEW AREA DISCOVERED! (always rewarded, even during warmup)
+            reward += 5.0 * self.exploration_bonus_multiplier
+            self.area_visit_times[grid_cell] = [current_step]
+        
+        # Track position
+        self.position_history.append((x, y, room, current_step))
+        self.last_position = current_pos
+        
+        return reward
+    
     def compute_llm_alignment_bonus(
         self, 
         action: int, 
         llm_suggestion: str, 
         game_state: Dict
     ) -> float:
-        """Compute bonus reward if action aligns with LLM suggestion.
+        """Compute bonus reward for following LLM button suggestion.
         
         Args:
             action: Action taken by RL agent (0-8)
-            llm_suggestion: LLM's suggested action string
+            llm_suggestion: LLM's suggested button string
             game_state: Current game state
             
         Returns:
@@ -170,32 +299,45 @@ Respond with ONLY the action name, nothing else."""
         
         llm_suggestion = llm_suggestion.upper()
         
-        # Map actions to directions
-        # 0=NOP, 1=UP, 2=DOWN, 3=LEFT, 4=RIGHT, 5=A, 6=B, 7=START, 8=SELECT
+        # Direct button mapping: 0=NOP, 1=UP, 2=DOWN, 3=LEFT, 4=RIGHT, 5=A, 6=B, 7=START, 8=SELECT
+        button_map = {
+            "NOP": 0,
+            "UP": 1,
+            "DOWN": 2,
+            "LEFT": 3,
+            "RIGHT": 4,
+            "A": 5,
+            "B": 6,
+            "START": 7,
+            "SELECT": 8
+        }
         
-        # Directional alignment
-        if "NORTH" in llm_suggestion and action == 1:  # UP
-            return self.llm_guidance_bonus * 2.0
-        elif "SOUTH" in llm_suggestion and action == 2:  # DOWN
-            return self.llm_guidance_bonus * 2.0
-        elif "WEST" in llm_suggestion and action == 3:  # LEFT
-            return self.llm_guidance_bonus * 2.0
-        elif "EAST" in llm_suggestion and action == 4:  # RIGHT
-            return self.llm_guidance_bonus * 2.0
-        
-        # NPC interaction alignment
-        elif "TALK" in llm_suggestion and action == 5:  # A button
-            npcs = len(game_state.get('entities', {}).get('npcs', []))
-            if npcs > 0:
-                return self.llm_guidance_bonus * 3.0  # Big bonus for correct NPC interaction
-        
-        # Exploration alignment (any movement or A button)
-        elif "EXPLORE" in llm_suggestion and action in [1, 2, 3, 4, 5]:
-            return self.llm_guidance_bonus * 0.5
-        
-        # Avoid enemies (no movement)
-        elif "AVOID" in llm_suggestion and action == 0:  # NOP
-            return self.llm_guidance_bonus * 1.0
+        # Check for exact button match
+        for button_name, button_id in button_map.items():
+            if button_name in llm_suggestion and action == button_id:
+                # Higher bonus for context-appropriate actions
+                npcs = len(game_state.get('entities', {}).get('npcs', []))
+                enemies = len(game_state.get('entities', {}).get('enemies', []))
+                
+                # NO BONUS for SELECT - agent can't use map with vector observations
+                if button_name == "SELECT":
+                    return 0.0  # Prevent reward hacking loop
+                # NO BONUS for START - agent can't use menu with vector observations  
+                elif button_name == "START":
+                    return 0.0  # Prevent menu loop
+                # Extra bonus for A button near NPCs (dialogue)
+                elif button_name == "A" and npcs > 0:
+                    return self.llm_guidance_bonus * 3.0
+                # Extra bonus for movement away from enemies when low health
+                elif button_name in ["UP", "DOWN", "LEFT", "RIGHT"] and enemies > 0:
+                    health = game_state.get('player', {}).get('health', 3)
+                    if health <= 1:
+                        return self.llm_guidance_bonus * 2.5  # Retreat bonus
+                    else:
+                        return self.llm_guidance_bonus * 1.5  # Movement bonus
+                # Standard bonus for exact match (movement, A, B)
+                else:
+                    return self.llm_guidance_bonus * 2.0
         
         return 0.0
     
@@ -224,27 +366,35 @@ Respond with ONLY the action name, nothing else."""
             
             # Get current game state for LLM
             game_state = info.get('structured_state', {})
-            current_room = game_state.get('player', {}).get('room', 0)
             
-            # Track screen changes for auto-exploration
-            if self.current_screen_id != current_room:
-                if self.current_screen_id is not None:
-                    print(f"   🗺️  New screen: {current_room} → Entering exploration mode")
-                self.current_screen_id = current_room
-                self.exploration_mode_remaining = self.exploration_steps
+            # Track room visits with full location names
+            current_room = game_state.get('player', {}).get('room', None)
+            if current_room is not None and current_room not in self.visited_rooms:
+                from observation.ram_maps.room_mappings import OVERWORLD_ROOMS
+                self.visited_rooms.add(current_room)
+                self.room_discovery_count += 1
+                room_name = OVERWORLD_ROOMS.get(current_room, f"Unknown Room {current_room}")
+                player_x = game_state.get('player', {}).get('x', 0)
+                player_y = game_state.get('player', {}).get('y', 0)
+                print(f"\n   🗺️  📍 NEW LOCATION DISCOVERED!")
+                print(f"   Location: {room_name}")
+                print(f"   Room ID: {current_room}")
+                print(f"   Coordinates: ({player_x}, {player_y})")
+                print(f"   Total Locations Explored: {len(self.visited_rooms)}\n")
             
-            # Decrement exploration counter
-            if self.exploration_mode_remaining > 0:
-                self.exploration_mode_remaining -= 1
-            
-            # Call LLM periodically (but not during exploration mode)
-            if (self.global_step > 0 and 
-                self.global_step % self.llm_frequency == 0 and 
-                self.exploration_mode_remaining == 0):
+            # Call LLM periodically
+            if self.global_step > 0 and self.global_step % self.llm_frequency == 0:
                 llm_suggestion = self.call_llm(game_state)
                 if llm_suggestion:
                     self.last_llm_suggestion = llm_suggestion
-                    print(f"   🧠 LLM suggests: {llm_suggestion}")
+                    # Check for NPCs and highlight strategic suggestions
+                    npcs = len(game_state.get('entities', {}).get('npcs', []))
+                    if npcs > 0 and "A" in llm_suggestion:
+                        print(f"   🧠 LLM suggests button: {llm_suggestion} 👥 [{npcs} NPCs nearby - HIGH VALUE!]")
+                    elif npcs > 0:
+                        print(f"   🧠 LLM suggests button: {llm_suggestion} 👥 [{npcs} NPCs detected]")
+                    else:
+                        print(f"   🧠 LLM suggests button: {llm_suggestion}")
             
             # Get action from PPO policy network
             obs_tensor = torch.FloatTensor(obs).unsqueeze(0).to(self.controller.device)
@@ -260,17 +410,39 @@ Respond with ONLY the action name, nothing else."""
             # Step environment
             obs, reward, terminated, truncated, info = self.env.step(action_int)
             
+            # Get updated game state after step
+            next_game_state = info.get('structured_state', {})
+            
+            # Compute exploration reward with decay (anti-loitering)
+            exploration_reward = self.compute_exploration_reward(next_game_state, self.global_step)
+            
             # Compute LLM alignment bonus
             llm_bonus = 0.0
-            if self.last_llm_suggestion and self.exploration_mode_remaining == 0:
+            if self.last_llm_suggestion:
                 llm_bonus = self.compute_llm_alignment_bonus(action_int, self.last_llm_suggestion, game_state)
                 if llm_bonus > 0:
-                    print(f"   ✨ LLM alignment bonus: +{llm_bonus:.1f}")
+                    action_names = ["NOP", "UP", "DOWN", "LEFT", "RIGHT", "A", "B", "START", "SELECT"]
+                    action_name = action_names[action_int] if action_int < len(action_names) else f"UNKNOWN({action_int})"
+                    
+                    # Track NPC interactions
+                    npcs = len(game_state.get('entities', {}).get('npcs', []))
+                    if action_name == "A" and npcs > 0:
+                        self.a_button_near_npc_count += 1
+                        self.npc_bonus_rewards += llm_bonus
+                        print(f"   ✅ PPO followed LLM! Button: {action_name} | Bonus: +{llm_bonus:.1f} 🎯 [NPC INTERACTION #{self.a_button_near_npc_count}!]")
+                    else:
+                        print(f"   ✅ PPO followed LLM! Button: {action_name} | Bonus: +{llm_bonus:.1f}")
+            
+            # Log exploration rewards when significant
+            if exploration_reward > 10.0:
+                print(f"   🌟 NEW AREA EXPLORED! Bonus: +{exploration_reward:.1f}")
+            elif exploration_reward < -1.0:
+                print(f"   ⚠️  Loitering penalty: {exploration_reward:.1f}")
             
             llm_bonuses.append(llm_bonus)
             
-            # Total reward = environment reward + LLM bonus
-            total_reward = reward + llm_bonus
+            # Total reward = environment reward + LLM bonus + exploration reward
+            total_reward = reward + llm_bonus + exploration_reward
             rewards.append(total_reward)
             episode_reward += total_reward
             
@@ -278,10 +450,6 @@ Respond with ONLY the action name, nothing else."""
             dones.append(done)
             
             self.global_step += 1
-            
-            # Log exploration mode
-            if step % 50 == 0 and self.exploration_mode_remaining > 0:
-                print(f"   🔍 Exploration mode: {self.exploration_mode_remaining} steps remaining (pure PPO)")
             
             if done:
                 print(f"   📊 Episode {self.episode_count}: Reward={episode_reward:.1f}, Steps={step+1}")
@@ -312,7 +480,6 @@ Respond with ONLY the action name, nothing else."""
         print(f"=" * 60)
         print(f"🧠 PPO Learning: Active")
         print(f"💡 LLM Guidance: Every {self.llm_frequency} steps")
-        print(f"🔍 Auto-exploration: {self.exploration_steps} steps per new screen")
         print(f"🎁 LLM Bonus Multiplier: {self.llm_guidance_bonus}x")
         print(f"📊 Total Steps: {total_timesteps}")
         print()
@@ -374,6 +541,42 @@ Respond with ONLY the action name, nothing else."""
         print(f"📊 Episodes: {self.episode_count}")
         print(f"🧠 LLM Calls: {self.llm_call_count} ({self.llm_success_count} successful)")
         
+        print(f"\n👥 NPC INTERACTION TRACKING:")
+        print(f"   A Button Near NPCs: {self.a_button_near_npc_count} times")
+        print(f"   Total NPC Bonus Rewards: +{self.npc_bonus_rewards:.1f}")
+        if self.a_button_near_npc_count > 0:
+            print(f"   Average NPC Bonus: {self.npc_bonus_rewards / self.a_button_near_npc_count:.1f}")
+        
+        print(f"\n🗺️  EXPLORATION SUMMARY:")
+        print(f"   Unique Rooms Visited: {len(self.visited_rooms)}")
+        print(f"   Unique Grid Areas Explored: {len(self.area_visit_times)}")
+        print(f"   Total Position Changes: {len(self.position_history)}")
+        
+        if self.visited_rooms:
+            from observation.ram_maps.room_mappings import OVERWORLD_ROOMS
+            print(f"\n   📍 Locations Discovered:")
+            for room_id in sorted(self.visited_rooms):
+                room_name = OVERWORLD_ROOMS.get(room_id, f"Unknown Room {room_id}")
+                print(f"      - {room_name} (ID: {room_id})")
+        
+        print(f"\n🎯 EXPLORATION MECHANICS:")
+        print(f"   ✓ Anti-loitering: Penalties for staying in same area")
+        print(f"   ✓ Decay window: {self.decay_window} steps")
+        print(f"   ✓ Backtracking allowed after decay period")
+        print(f"   ✓ New area bonus: {5.0 * self.exploration_bonus_multiplier:.1f} points")
+        
+        print(f"\n🧠 LLM CONTEXT SUMMARY:")
+        print(f"   The LLM received detailed context for EVERY suggestion:")
+        print(f"   ✓ Location name (from room_mappings.py)")
+        print(f"   ✓ Room ID")
+        print(f"   ✓ Link's (x, y) position")
+        print(f"   ✓ Facing direction")
+        print(f"   ✓ Health status")
+        print(f"   ✓ NPC positions and types")
+        print(f"   ✓ Enemy counts")
+        print(f"   ✓ Item counts")
+        print(f"   This enabled strategic, context-aware guidance!")
+        
         self.env.close()
 
 
@@ -390,12 +593,10 @@ def main():
     parser.add_argument("--llm-endpoint", type=str,
                        default="http://localhost:8000/v1/chat/completions",
                        help="LLM endpoint URL")
-    parser.add_argument("--llm-frequency", type=int, default=30,
+    parser.add_argument("--llm-frequency", type=int, default=5,
                        help="Call LLM every N steps")
     parser.add_argument("--llm-bonus", type=float, default=5.0,
                        help="LLM guidance bonus multiplier")
-    parser.add_argument("--exploration-steps", type=int, default=300,
-                       help="Steps of pure PPO per new screen")
     
     args = parser.parse_args()
     
@@ -404,8 +605,7 @@ def main():
         headless=args.headless,
         llm_endpoint=args.llm_endpoint,
         llm_frequency=args.llm_frequency,
-        llm_guidance_bonus=args.llm_bonus,
-        exploration_steps=args.exploration_steps
+        llm_guidance_bonus=args.llm_bonus
     )
     
     trainer.train(total_timesteps=args.total_timesteps)

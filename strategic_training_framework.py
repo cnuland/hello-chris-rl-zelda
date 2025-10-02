@@ -36,7 +36,7 @@ class StrategicConfig:
     """Configuration for strategic training."""
     # Training parameters
     max_episode_steps: int = 12000  # 10 minutes at 20 FPS
-    llm_call_interval: int = 30  # LLM guidance every N steps
+    llm_call_interval: int = 5  # LLM guidance every N steps
     
     # MLX LLM settings
     mlx_model: str = "mlx-community/Qwen2.5-14B-Instruct-4bit"
@@ -69,7 +69,6 @@ class StrategicActionTranslator:
         self.last_dialogue_state = 0  # Track dialogue state to detect if TALK_TO_NPC worked
         self.talk_attempts = 0  # Count consecutive TALK_TO_NPC attempts without dialogue
         self.current_screen_id = None  # Track screen changes
-        self.exploration_mode_steps_remaining = 0  # Steps remaining in pure RL exploration mode
     
     def set_pyboy_instance(self, pyboy_instance):
         """Set the PyBoy instance for pathfinding."""
@@ -552,8 +551,7 @@ class StrategicTrainer:
                         print(f"⏱️  Step {step}/{self.config.max_episode_steps}")
                     
                     # 🎯 STRATEGIC ACTION SELECTION WITH PATHFINDING
-                    # SKIP strategic actions entirely during exploration mode
-                    if strategic_steps_remaining > 0 and current_strategic_action is not None and self.action_translator.exploration_mode_steps_remaining == 0:
+                    if strategic_steps_remaining > 0 and current_strategic_action is not None:
                         # Handle specific directional and item actions
                         action_type = last_llm_guidance.get("action", "").upper() if last_llm_guidance else ""
                         
@@ -732,14 +730,8 @@ class StrategicTrainer:
                             "llm_guidance": last_llm_guidance
                         })
                     
-                    # Decrement exploration mode counter
-                    if self.action_translator.exploration_mode_steps_remaining > 0:
-                        self.action_translator.exploration_mode_steps_remaining -= 1
-                        if step % 50 == 0:  # Log occasionally
-                            print(f"   🔍 EXPLORATION MODE ACTIVE: {self.action_translator.exploration_mode_steps_remaining} steps remaining (pure RL - no pathfinding)")
-                    
-                    # Strategic LLM calls (DISABLED during exploration mode)
-                    if step > 0 and step % self.config.llm_call_interval == 0 and self.action_translator.exploration_mode_steps_remaining == 0:
+                    # Strategic LLM calls every 5 steps
+                    if step > 0 and step % self.config.llm_call_interval == 0:
                         # Get game state for context-aware prompts  
                         try:
                             current_game_state = info.get('structured_state', {}) if info else {}
@@ -764,25 +756,10 @@ class StrategicTrainer:
                                 print(f"   🚨 FORCING ACTION: {original_action} → {self._forced_action_override[0]}")
                                 self._forced_action_override = None  # Clear after use
                             
-                            # Check if EXPLORE_AREA was chosen - enter pure RL exploration mode!
-                            if "EXPLORE" in llm_response['action'] or "SEARCH" in llm_response['action']:
-                                self.action_translator.exploration_mode_steps_remaining = 300  # 300 steps (~15 seconds)
-                                print(f"   🎯 ENTERING EXPLORATION MODE: 300 steps of pure RL learning!")
-                                print(f"   🧠 LLM will be disabled - letting trained network explore screen and find NPCs")
-                                # CLEAR ALL strategic state - full reset for exploration
-                                last_llm_guidance = None
-                                strategic_steps_remaining = 0
-                                current_strategic_action = None
-                                current_action_mode = None
-                                # Reset pathfinding to stop any ongoing navigation
-                                if hasattr(self.action_translator, 'pathfinding_executor'):
-                                    self.action_translator.pathfinding_executor.reset_path()
-                                print(f"   🔄 All strategic state cleared - pure exploration mode active")
-                            else:
-                                # Normal LLM guidance - store it
-                                last_llm_guidance = llm_response
-                                print(f"   🧠 Step {step}: {llm_response['action']} ({llm_response['response_time']})")
-                                print(f"   📝 LLM guidance stored: {last_llm_guidance}")
+                            # Store LLM guidance
+                            last_llm_guidance = llm_response
+                            print(f"   🧠 Step {step}: {llm_response['action']} ({llm_response['response_time']})")
+                            print(f"   📝 LLM guidance stored: {last_llm_guidance}")
                             
                             # Track actions for repetition detection (for situational awareness)
                             if not hasattr(self.action_translator, 'last_llm_actions'):
@@ -1099,35 +1076,14 @@ class StrategicTrainer:
                 if not hasattr(self.action_translator, 'screen_exploration_count'):
                     self.action_translator.screen_exploration_count = {}
                 self.action_translator.screen_exploration_count[current_screen] = 0
-                
-                # FORCE EXPLORATION MODE IMMEDIATELY on new screens!
-                if self.action_translator.exploration_mode_steps_remaining > 0:
-                    # Already exploring - just log the screen change, don't reset counter
-                    print(f"   🗺️  Screen changed during exploration mode (continuing current exploration)")
-                else:
-                    # NEW SCREEN: Automatically enter exploration mode (no LLM needed!)
-                    self.action_translator.exploration_mode_steps_remaining = 300  # 300 steps of pure RL
-                    print(f"   ✨ NEW SCREEN DETECTED → AUTO-ENTERING EXPLORATION MODE!")
-                    print(f"   🔍 300 steps of pure RL exploration (no pathfinding, no LLM)")
-                    # Clear all strategic state
-                    last_llm_guidance = None
-                    strategic_steps_remaining = 0
-                    current_strategic_action = None
-                    current_action_mode = None
-                    if hasattr(self.action_translator, 'pathfinding_executor'):
-                        self.action_translator.pathfinding_executor.reset_path()
+                print(f"   🗺️  New screen detected: {current_screen}")
             elif self.action_translator.current_screen_id is None:
-                # First initialization - also start exploration mode!
+                # First initialization
                 self.action_translator.current_screen_id = current_screen
                 if not hasattr(self.action_translator, 'screen_exploration_count'):
                     self.action_translator.screen_exploration_count = {}
                 self.action_translator.screen_exploration_count[current_screen] = 0
-                
-                # Start exploration mode on first screen too
-                if self.action_translator.exploration_mode_steps_remaining == 0:
-                    self.action_translator.exploration_mode_steps_remaining = 300
-                    print(f"   🎮 FIRST SCREEN → AUTO-ENTERING EXPLORATION MODE!")
-                    print(f"   🔍 300 steps of pure RL exploration to start")
+                print(f"   🎮 Starting on screen: {current_screen}")
             
             # Check if TALK_TO_NPC is being spammed without dialogue triggering
             if last_action == "TALK_TO_NPC":
@@ -1457,14 +1413,14 @@ class StrategicTrainer:
 def create_visual_strategic_trainer(config: Optional[StrategicConfig] = None) -> StrategicTrainer:
     """Create trainer configured for visual strategic training."""
     if config is None:
-        config = StrategicConfig(llm_call_interval=30)  # More frequent for visual
+        config = StrategicConfig(llm_call_interval=5)  # LLM input every 5 steps
     return StrategicTrainer(config)
 
 
 def create_headless_strategic_trainer(config: Optional[StrategicConfig] = None) -> StrategicTrainer:
     """Create trainer configured for headless strategic training."""
     if config is None:
-        config = StrategicConfig(llm_call_interval=50)  # Less frequent for performance
+        config = StrategicConfig(llm_call_interval=5)  # LLM input every 5 steps
     return StrategicTrainer(config)
 
 
