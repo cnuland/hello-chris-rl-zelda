@@ -1,0 +1,140 @@
+apiVersion: inference.networking.x-k8s.io/v1alpha1
+kind: InferencePool
+metadata:
+  name: llama4-scout-pool
+  namespace: llm-d
+spec:
+  readinessGates:
+  - conditionType: inference.networking.x-k8s.io/Ready
+  selector:
+    matchLabels:
+      llm-d.ai/inferenceServing: "true"
+      llm-d.ai/model: llama4-scout-modelservice
+      llm-d.ai/role: decode
+  sessionAffinityPolicy:
+    type: PrefixHash
+    prefixHash:
+      headerName: x-session-id
+      prefixLength: 16  # Use first 16 chars for KV cache routing
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: llama4-scout-route
+  namespace: llm-d
+  labels:
+    app.kubernetes.io/name: llama4-scout-route
+spec:
+  parentRefs:
+  - group: gateway.networking.k8s.io
+    kind: Gateway
+    name: llm-d-gateway
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /v1/chat/completions
+    - path:
+        type: PathPrefix
+        value: /v1/models
+    - path:
+        type: PathPrefix  
+        value: /health
+    filters:
+    - type: RequestHeaderModifier
+      requestHeaderModifier:
+        add:
+        - name: x-model-type
+          value: llama4-scout
+        - name: x-cache-enabled
+          value: "true"
+    backendRefs:
+    - group: inference.networking.x-k8s.io
+      kind: InferencePool
+      name: llama4-scout-pool
+      port: 8000
+      weight: 1
+    timeouts:
+      backendRequest: "0s"  # No timeout for long inference
+      request: "0s"
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: llama4-scout-destination-rule
+  namespace: llm-d
+spec:
+  host: llama4-scout-decode.llm-d.svc.cluster.local
+  trafficPolicy:
+    loadBalancer:
+      consistentHash:
+        httpHeaderName: x-session-id
+        minimumRingSize: 4096
+    connectionPool:
+      tcp:
+        maxConnections: 10
+        connectTimeout: 30s
+        keepAlive:
+          time: 7200s
+          interval: 75s
+      http:
+        http1MaxPendingRequests: 1024
+        http2MaxRequests: 1000
+        maxRequestsPerConnection: 10
+        maxRetries: 3
+        idleTimeout: 90s
+        h2UpgradePolicy: UPGRADE
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: llama4-scout-prefix-cache-filter
+  namespace: llm-d
+spec:
+  configPatches:
+  - applyTo: HTTP_FILTER
+    match:
+      context: SIDECAR_INBOUND
+      listener:
+        filterChain:
+          filter:
+            name: envoy.filters.network.http_connection_manager
+    patch:
+      operation: INSERT_BEFORE
+      value:
+        name: envoy.filters.http.lua
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+          inline_code: |
+            function envoy_on_request(request_handle)
+              -- Extract prompt for prefix-aware caching
+              local headers = request_handle:headers()
+              local method = headers:get(":method")
+              
+              if method == "POST" then
+                local body = request_handle:body()
+                if body then
+                  local body_string = body:getBytes(0, body:length())
+                  local json = require("json")
+                  local ok, data = pcall(json.decode, body_string)
+                  
+                  if ok and data.messages then
+                    -- Generate session ID from message content for KV cache affinity
+                    local content = ""
+                    for _, msg in ipairs(data.messages) do
+                      if msg.content then
+                        content = content .. msg.content
+                      end
+                    end
+                    
+                    -- Create prefix hash for similar prompts
+                    local prefix = string.sub(content, 1, 64)  -- First 64 chars
+                    local session_id = "cache-" .. tostring(prefix:gsub("%W", ""))
+                    
+                    request_handle:headers():add("x-session-id", session_id)
+                    request_handle:headers():add("x-cache-prefix", prefix)
+                    request_handle:headers():add("x-inference-type", "llama4-scout")
+                  end
+                end
+              end
+            end

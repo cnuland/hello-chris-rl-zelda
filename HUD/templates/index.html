@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>vLLM Vision Hybrid - Training Dashboard</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo-section">
+                    <img src="/static/images/vllm-logo-text-light.png" alt="vLLM Logo" class="logo-image">
+                    <div class="title-section">
+                        <h1>Vision Hybrid</h1>
+                        <p class="subtitle">RL+LLM Training Dashboard</p>
+                    </div>
+                    <div class="game-title-section">
+                        <span class="game-label">GAME:</span>
+                        <span class="game-name">The Legend of Zelda: Oracle of Seasons</span>
+                    </div>
+                </div>
+                <div class="status-badge" id="status-badge">
+                    <span class="status-dot"></span>
+                    <span class="status-text">Connected</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Left Column: Training Metrics -->
+            <div class="left-column">
+                <!-- Training Progress -->
+                <div class="card">
+                    <h2 class="card-title">Training Progress</h2>
+                    <div class="episode-id-display">
+                        <span class="episode-id-label">EPISODE ID:</span>
+                        <span class="episode-id-value" id="episode-id">E000-0000</span>
+                    </div>
+                    <div class="metric-grid">
+                        <div class="metric">
+                            <span class="metric-label">Epoch</span>
+                            <span class="metric-value" id="epoch">1</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Episode</span>
+                            <span class="metric-value" id="episode">0</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Global Step</span>
+                            <span class="metric-value" id="global-step">0</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Episode Reward</span>
+                            <span class="metric-value" id="episode-reward">0.0</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Episode Length</span>
+                            <span class="metric-value" id="episode-length">0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Game State -->
+                <div class="card">
+                    <h2 class="card-title">Game State</h2>
+                    <div class="game-state-grid">
+                        <div class="state-item">
+                            <span class="state-label">Location</span>
+                            <span class="state-value" id="location">Unknown</span>
+                        </div>
+                        <div class="state-item">
+                            <span class="state-label">Room ID</span>
+                            <span class="state-value" id="room-id">--</span>
+                        </div>
+                        <div class="state-item">
+                            <span class="state-label">Position</span>
+                            <span class="state-value" id="position">(--, --)</span>
+                        </div>
+                        <div class="state-item">
+                            <span class="state-label">Health</span>
+                            <span class="state-value health" id="health">3/3 ❤️</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Entities -->
+                <div class="card">
+                    <h2 class="card-title">Nearby Entities</h2>
+                    <div class="entity-grid">
+                        <div class="entity-badge npc">
+                            <span class="entity-icon">👤</span>
+                            <span class="entity-label">NPCs</span>
+                            <span class="entity-count" id="npc-count">0</span>
+                        </div>
+                        <div class="entity-badge enemy">
+                            <span class="entity-icon">⚔️</span>
+                            <span class="entity-label">Enemies</span>
+                            <span class="entity-count" id="enemy-count">0</span>
+                        </div>
+                        <div class="entity-badge item">
+                            <span class="entity-icon">📦</span>
+                            <span class="entity-label">Items</span>
+                            <span class="entity-count" id="item-count">0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- LLM Guidance -->
+                <div class="card llm-card">
+                    <h2 class="card-title">
+                        <svg class="card-icon" width="20" height="20" viewBox="0 0 20 20">
+                            <circle cx="10" cy="10" r="8" fill="none" stroke="#0f62fe" stroke-width="1.5"/>
+                            <circle cx="10" cy="10" r="3" fill="#0f62fe"/>
+                        </svg>
+                        Vision LLM Guidance
+                    </h2>
+                    <div class="llm-content">
+                        <div class="llm-suggestion">
+                            <span class="suggestion-label">Current Suggestion:</span>
+                            <span class="suggestion-button" id="llm-suggestion">--</span>
+                        </div>
+                        <div class="llm-stats">
+                            <div class="llm-stat">
+                                <span class="stat-label">LLM Calls</span>
+                                <span class="stat-value" id="llm-calls">0</span>
+                            </div>
+                            <div class="llm-stat">
+                                <span class="stat-label">Success Rate</span>
+                                <span class="stat-value" id="llm-success-rate">100%</span>
+                            </div>
+                            <div class="llm-stat">
+                                <span class="stat-label">Alignment</span>
+                                <span class="stat-value" id="llm-alignment">0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Progression Milestones -->
+                <div class="card">
+                    <h2 class="card-title">Progression Milestones</h2>
+                    <div class="milestone-list">
+                        <div class="milestone" id="milestone-maku-tree">
+                            <span class="milestone-icon">🌳</span>
+                            <span class="milestone-text">Maku Tree Entered</span>
+                            <span class="milestone-status">❌</span>
+                        </div>
+                        <div class="milestone" id="milestone-dungeon">
+                            <span class="milestone-icon">🏰</span>
+                            <span class="milestone-text">Dungeon Entered</span>
+                            <span class="milestone-status">❌</span>
+                        </div>
+                        <div class="milestone" id="milestone-sword-use">
+                            <span class="milestone-icon">✂️</span>
+                            <span class="milestone-text">Sword Usage</span>
+                            <span class="milestone-status milestone-count">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: Vision Display -->
+            <div class="right-column">
+                <div class="card vision-card">
+                    <h2 class="card-title">
+                        <svg class="card-icon" width="20" height="20" viewBox="0 0 20 20">
+                            <rect x="2" y="4" width="16" height="12" rx="1" fill="none" stroke="#0f62fe" stroke-width="1.5"/>
+                            <circle cx="10" cy="10" r="3" fill="none" stroke="#0f62fe" stroke-width="1.5"/>
+                        </svg>
+                        Vision LLM Input
+                        <span class="model-name">Llama 4 Scout 17B</span>
+                    </h2>
+                    <div class="vision-content">
+                        <div class="vision-image-container">
+                            <img id="vision-image" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" alt="Vision LLM Input">
+                            <div class="vision-overlay" id="vision-loading">
+                                <div class="spinner"></div>
+                                <p>Waiting for vision data...</p>
+                            </div>
+                        </div>
+                        <div class="vision-info">
+                            <div class="vision-stat">
+                                <span class="info-label">Resolution:</span>
+                                <span class="info-value" id="image-resolution">320×288</span>
+                            </div>
+                            <div class="vision-stat">
+                                <span class="info-label">Last Updated:</span>
+                                <span class="info-value" id="last-updated">--</span>
+                            </div>
+                            <div class="vision-stat">
+                                <span class="info-label">LLM Response Time:</span>
+                                <span class="info-value" id="response-time">-- ms</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Exploration Stats -->
+                <div class="card">
+                    <h2 class="card-title">Exploration Statistics</h2>
+                    <div class="exploration-stats">
+                        <div class="explore-stat">
+                            <span class="explore-label">Rooms Discovered</span>
+                            <span class="explore-value" id="rooms-discovered">0</span>
+                        </div>
+                        <div class="explore-stat">
+                            <span class="explore-label">Grid Areas Explored</span>
+                            <span class="explore-value" id="grid-areas">0</span>
+                        </div>
+                        <div class="explore-stat">
+                            <span class="explore-label">Buildings Entered</span>
+                            <span class="explore-value" id="buildings-entered">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>vLLM Vision Hybrid Training System | Real-time RL+LLM Dashboard</p>
+        </footer>
+    </div>
+
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>
+

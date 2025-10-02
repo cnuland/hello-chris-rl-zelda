@@ -10,6 +10,7 @@ while the LLM gets actual screenshots for strategic guidance.
 """
 
 import os
+import sys
 import time
 import argparse
 import base64
@@ -24,6 +25,16 @@ import requests
 from emulator.zelda_env_configurable import ZeldaConfigurableEnvironment
 from agents.controller import ZeldaController, ControllerConfig
 from observation.ram_maps.room_mappings import OVERWORLD_ROOMS
+
+# Import HUD server
+sys.path.append(os.path.join(os.path.dirname(__file__), 'HUD'))
+try:
+    from hud_server import start_server_thread, update_training_data, update_vision_data, register_session
+    HUD_AVAILABLE = True
+except ImportError:
+    print("⚠️  HUD server not available (missing Flask or dependencies)")
+    HUD_AVAILABLE = False
+    register_session = None
 
 
 class VisionHybridTrainer:
@@ -110,6 +121,9 @@ class VisionHybridTrainer:
         # Tracking
         self.global_step = 0
         self.episode_count = 0
+        self.episode_step = 0  # Current episode step count
+        self.episode_rewards = []  # Track rewards within current episode
+        self.current_epoch = 1  # Track current epoch/rollout number
         self.llm_call_count = 0
         self.llm_success_count = 0
         self.llm_alignment_count = 0
@@ -123,7 +137,7 @@ class VisionHybridTrainer:
         self.last_room = None
         self.stationary_steps = 0
         self.decay_window = 500
-        self.exploration_bonus_multiplier = 5.0
+        self.exploration_bonus_multiplier = 0.4  # Reduced from 5.0 to prevent farming (5.0 * 0.4 = 2.0 per new cell)
         self.grid_size = 8
         self.penalty_warmup_steps = 1000
         
@@ -139,12 +153,35 @@ class VisionHybridTrainer:
         self.dungeon_entered = False  # Track if entered Gnarled Root Dungeon
         self.vines_cut_count = 0  # Track B button usage (cutting obstacles)
         
+        # Start HUD server if HUD is available (works in headless too!)
+        self.hud_enabled = False
+        self.hud_session_id = None
+        if HUD_AVAILABLE:
+            try:
+                print(f"🎮 Starting VLM Vision Hybrid HUD Server...")
+                start_server_thread(host='0.0.0.0', port=8086)
+                
+                # Register this training session with the HUD
+                self.hud_session_id = register_session()
+                
+                if self.hud_session_id:
+                    self.hud_enabled = True
+                    print(f"   ✅ HUD available at http://localhost:8086")
+                    print(f"   🔒 Session ID: {self.hud_session_id[:8]}...")
+                else:
+                    print(f"   ⚠️  HUD is connected to another training session")
+                    print(f"   This session will run without HUD updates")
+                    
+            except Exception as e:
+                print(f"   ⚠️  Could not start HUD server: {e}")
+        
         print(f"🎮 Vision Hybrid Trainer initialized")
         print(f"   Vector observations for PPO: {self.env.observation_space.shape}")
         print(f"   Vision mode for LLM: {'✅ ENABLED' if self.enable_vision else '❌ DISABLED'}")
         if self.enable_vision:
             print(f"   Image settings: {160*self.image_scale}×{144*self.image_scale}, {self.image_quality}% JPEG")
         print(f"   LLM call frequency: every {self.llm_frequency} steps")
+        print(f"   HUD Dashboard: {'✅ ENABLED' if self.hud_enabled else '❌ DISABLED'}")
     
     def capture_screenshot_base64(self) -> Optional[str]:
         """Capture Game Boy screenshot and encode as base64.
@@ -295,6 +332,94 @@ class VisionHybridTrainer:
         except Exception as e:
             print(f"⚠️  LLM call failed: {e}")
             return None
+    
+    def update_hud(
+        self,
+        game_state: Dict,
+        llm_suggestion: Optional[str] = None,
+        screenshot_base64: Optional[str] = None,
+        llm_response_time: Optional[float] = None
+    ):
+        """
+        Push updates to the HUD dashboard
+        
+        Args:
+            game_state: Current game state dictionary
+            llm_suggestion: Latest LLM button suggestion
+            screenshot_base64: Latest vision screenshot
+            llm_response_time: LLM response time in milliseconds
+        """
+        if not self.hud_enabled:
+            return
+        
+        # Debug: confirm HUD update is being called
+        if self.global_step % 50 == 0:
+            print(f"🎮 HUD update at step {self.global_step}")
+        
+        try:
+            # Prepare training data
+            player = game_state.get('player', {})
+            entities = game_state.get('entities', {})
+            
+            training_data = {
+                'epoch': self.current_epoch,
+                'episode': self.episode_count,
+                'episode_id': f"E{self.current_epoch:03d}-{self.episode_count:04d}",
+                'global_step': self.global_step,
+                'episode_reward': sum(self.episode_rewards) if self.episode_rewards else 0,
+                'episode_length': self.episode_step,
+                'location': player.get('location', 'Unknown'),
+                'room_id': player.get('room', 0),
+                'position': {
+                    'x': player.get('x', 0),
+                    'y': player.get('y', 0)
+                },
+                'health': {
+                    'current': player.get('health', 3),
+                    'max': player.get('max_health', 3)
+                },
+                'entities': {
+                    'npcs': len(entities.get('npcs', [])),
+                    'enemies': len(entities.get('enemies', [])),
+                    'items': len(entities.get('items', []))
+                },
+                'llm_calls': self.llm_call_count,
+                'llm_success_rate': (self.llm_success_count / self.llm_call_count * 100) if self.llm_call_count > 0 else 100,
+                'llm_alignment': self.llm_alignment_count,
+                'milestones': {
+                    'maku_tree_entered': self.maku_tree_entered,
+                    'dungeon_entered': self.dungeon_entered,
+                    'sword_usage': self.vines_cut_count
+                },
+                'exploration': {
+                    'rooms_discovered': len(self.visited_rooms),
+                    'grid_areas': len(self.area_visit_times),
+                    'buildings_entered': self.buildings_entered
+                }
+            }
+            
+            # Add LLM suggestion if available
+            if llm_suggestion:
+                training_data['llm_suggestion'] = llm_suggestion
+            
+            # Update training data (pass session_id for validation)
+            if not update_training_data(training_data, session_id=self.hud_session_id):
+                # This session is no longer active, disable HUD
+                self.hud_enabled = False
+                print(f"   ⚠️  Lost HUD connection - another session took over")
+                return
+            
+            # Update vision data if available
+            if screenshot_base64:
+                if not update_vision_data(screenshot_base64, llm_response_time, session_id=self.hud_session_id):
+                    # This session is no longer active, disable HUD
+                    self.hud_enabled = False
+                    print(f"   ⚠️  Lost HUD connection - another session took over")
+                    return
+                
+        except Exception as e:
+            # Don't crash training if HUD update fails
+            print(f"⚠️  HUD update failed at step {self.global_step}: {e}")
     
     def compute_llm_alignment_bonus(
         self,
@@ -460,9 +585,14 @@ class VisionHybridTrainer:
             
             # Detect room transition
             if current_room is not None and self.last_room is not None and current_room != self.last_room:
-                # Entered a new room!
-                room_entry_reward = self.config['behavior'].get('new_room_entry_reward', 50.0)
+                # Room transition detected
                 self.buildings_entered += 1
+                
+                # Only reward if this is a TRULY NEW room (anti-farming)
+                if current_room not in self.visited_rooms:
+                    room_entry_reward = self.config['behavior'].get('new_room_entry_reward', 10.0)
+                    print(f"   🆕 FIRST TIME in room {current_room}! Bonus: +{room_entry_reward:.1f}")
+                # No reward for revisiting rooms (prevents back-and-forth farming)
                 
                 # Check if entering Maku Tree (Room ID 0xD9 = 217)
                 if current_room == 0xD9 or current_room == 217:
@@ -503,11 +633,13 @@ class VisionHybridTrainer:
             if self.global_step % self.llm_frequency == 0:
                 # Capture screenshot if vision enabled
                 screenshot = None
+                llm_start_time = time.time()
                 if self.enable_vision:
                     screenshot = self.capture_screenshot_base64()
                 
                 # Call vision LLM
                 llm_suggestion = self.call_llm_vision(game_state, screenshot)
+                llm_response_time = (time.time() - llm_start_time) * 1000  # Convert to ms
                 self.llm_call_count += 1
                 
                 if llm_suggestion:
@@ -516,6 +648,9 @@ class VisionHybridTrainer:
                     
                     vision_tag = "👁️ VISION" if screenshot else "📝 TEXT"
                     print(f"   {vision_tag} LLM suggests: {llm_suggestion}")
+                    
+                    # Update HUD with LLM data and vision
+                    self.update_hud(game_state, llm_suggestion, screenshot, llm_response_time)
             
             # Compute bonuses if we have a suggestion
             if last_llm_suggestion:
@@ -539,6 +674,14 @@ class VisionHybridTrainer:
             episode_length += 1
             self.global_step += 1
             
+            # Track for HUD
+            self.episode_rewards.append(total_reward)
+            self.episode_step = episode_length
+            
+            # Update HUD periodically (every 5 steps) even without LLM calls
+            if self.hud_enabled and self.global_step % 5 == 0:
+                self.update_hud(game_state, last_llm_suggestion)
+            
             # Update for next step
             obs = next_obs
             
@@ -551,6 +694,10 @@ class VisionHybridTrainer:
                 episode_reward = 0
                 episode_length = 0
                 self.episode_count += 1
+                
+                # Reset episode tracking for HUD
+                self.episode_rewards = []
+                self.episode_step = 0
             
             # Progress update
             if self.global_step % 500 == 0:

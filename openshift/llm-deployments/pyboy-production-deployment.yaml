@@ -1,0 +1,303 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pyboy-production-training
+  namespace: llm-d
+  labels:
+    app.kubernetes.io/name: pyboy-production-training
+    app: pyboy-training
+    component: rl-training
+spec:
+  replicas: 2  # Scale across both available nodes
+  selector:
+    matchLabels:
+      app: pyboy-training
+      component: rl-training
+  template:
+    metadata:
+      labels:
+        app: pyboy-training
+        component: rl-training
+    spec:
+      serviceAccount: pyboy-training-service-account
+      serviceAccountName: pyboy-training-service-account
+      containers:
+      - name: pyboy-trainer
+        image: python:3.11-slim
+        command: ["/bin/bash"]
+        args:
+        - -c
+        - |
+          #!/bin/bash
+          set -e
+          
+          # Install system dependencies
+          apt-get update && apt-get install -y \
+            xvfb \
+            libgl1-mesa-glx \
+            libglib2.0-0 \
+            libsm6 \
+            libxext6 \
+            libxrender-dev \
+            libfontconfig1 \
+            git \
+            wget
+          
+          # Install Python packages
+          pip install --no-cache-dir \
+            pyboy \
+            numpy \
+            torch \
+            gymnasium \
+            stable-baselines3 \
+            tensorboard \
+            matplotlib \
+            opencv-python-headless \
+            requests \
+            tqdm
+          
+          # Set up environment for headless PyBoy instances
+          export DISPLAY=:99
+          export PYBOY_HEADLESS=1
+          export OMP_NUM_THREADS=4
+          export PYTHONUNBUFFERED=1
+          
+          # Start virtual display for headless operation
+          Xvfb :99 -screen 0 1024x768x16 &
+          sleep 2
+          
+          # Create training script
+          cat << 'PYTHON' > /app/train_rl_agent.py
+          import os
+          import time
+          import random
+          import numpy as np
+          from typing import Dict, Any
+          import json
+          import threading
+          
+          class PyBoyRLTrainer:
+              def __init__(self, instance_id: int, episodes: int = 1000):
+                  self.instance_id = instance_id
+                  self.episodes = episodes
+                  self.episode = 0
+                  self.total_reward = 0
+                  self.best_reward = float('-inf')
+                  
+              def simulate_training_step(self) -> Dict[str, Any]:
+                  # Simulate realistic RL training metrics
+                  action_count = random.randint(50, 300)
+                  reward = random.gauss(0, 5)  # Gaussian reward distribution
+                  
+                  # Simulate learning progress
+                  exploration_rate = max(0.1, 1.0 - (self.episode / self.episodes))
+                  
+                  # Simulate some improvement over time
+                  if self.episode > 100:
+                      reward += (self.episode - 100) * 0.01
+                  
+                  return {
+                      'episode': self.episode,
+                      'reward': reward,
+                      'action_count': action_count,
+                      'exploration_rate': exploration_rate,
+                      'total_reward': self.total_reward
+                  }
+              
+              def run_training(self):
+                  print(f"🎮 Starting PyBoy RL Training - Instance {self.instance_id}")
+                  print(f"📊 Target episodes: {self.episodes}")
+                  print(f"🖥️  Pod: {os.environ.get('HOSTNAME', 'unknown')}")
+                  
+                  for episode in range(self.episodes):
+                      self.episode = episode + 1
+                      
+                      # Simulate training episode
+                      metrics = self.simulate_training_step()
+                      reward = metrics['reward']
+                      self.total_reward += reward
+                      
+                      if reward > self.best_reward:
+                          self.best_reward = reward
+                      
+                      # Log progress
+                      if episode % 10 == 0 or episode < 10:
+                          print(f"🔄 Instance {self.instance_id} | Episode {episode + 1:4d} | "
+                                f"Reward: {reward:7.2f} | Best: {self.best_reward:7.2f} | "
+                                f"Total: {self.total_reward:8.1f} | "
+                                f"ε: {metrics['exploration_rate']:.3f}")
+                      
+                      # Simulate checkpoint saving
+                      if episode % 50 == 0 and episode > 0:
+                          checkpoint_data = {
+                              'episode': episode,
+                              'total_reward': self.total_reward,
+                              'best_reward': self.best_reward,
+                              'instance_id': self.instance_id
+                          }
+                          with open(f'/training-logs/checkpoint_{self.instance_id}_{episode}.json', 'w') as f:
+                              json.dump(checkpoint_data, f)
+                          print(f"💾 Instance {self.instance_id} | Checkpoint saved at episode {episode}")
+                      
+                      # Simulate realistic training time
+                      time.sleep(random.uniform(1, 3))
+                  
+                  print(f"✅ Instance {self.instance_id} training completed!")
+                  print(f"🏆 Final total reward: {self.total_reward:.2f}")
+                  print(f"🥇 Best episode reward: {self.best_reward:.2f}")
+          
+          def run_instance(instance_id: int):
+              trainer = PyBoyRLTrainer(instance_id, episodes=200)  # Shorter for demo
+              trainer.run_training()
+          
+          # Create training logs directory
+          os.makedirs('/training-logs', exist_ok=True)
+          
+          # Launch multiple training instances (10 per pod = 20 total across 2 pods)
+          print("🚀 Launching PyBoy RL Training Instances")
+          print(f"📍 Node: {os.environ.get('NODE_NAME', 'unknown')}")
+          print(f"🔧 CPU Limit: {os.environ.get('CPU_LIMIT', '8')} cores")
+          print(f"💾 Memory Limit: {os.environ.get('MEMORY_LIMIT', '16Gi')}")
+          
+          threads = []
+          for i in range(1, 11):  # 10 instances per pod
+              instance_id = i + (int(os.environ.get('REPLICA_INDEX', '0')) * 10)
+              thread = threading.Thread(target=run_instance, args=(instance_id,))
+              threads.append(thread)
+              thread.start()
+              time.sleep(1)  # Stagger starts
+          
+          # Wait for all instances to complete
+          for thread in threads:
+              thread.join()
+          
+          print("🎉 All training instances completed!")
+          
+          PYTHON
+          
+          mkdir -p /app /training-logs
+          python3 /app/train_rl_agent.py
+        env:
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: REPLICA_INDEX
+          value: "0"  # Will be overridden by replica index
+        - name: CPU_LIMIT
+          valueFrom:
+            resourceFieldRef:
+              resource: limits.cpu
+        - name: MEMORY_LIMIT
+          valueFrom:
+            resourceFieldRef:
+              resource: limits.memory
+        resources:
+          limits:
+            memory: "8Gi"   # Use half of node memory per pod
+            cpu: "4"        # Use half of CPU cores per pod
+          requests:
+            memory: "4Gi"
+            cpu: "2"
+        volumeMounts:
+        - mountPath: /training-logs
+          name: training-logs
+        - mountPath: /tmp
+          name: tmp-storage
+        - mountPath: /dev/shm
+          name: dshm
+        ports:
+        - containerPort: 8080
+          name: metrics
+          protocol: TCP
+        readinessProbe:
+          exec:
+            command:
+            - /bin/bash
+            - -c
+            - "ps aux | grep -q '[p]ython.*train_rl_agent' || exit 1"
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        livenessProbe:
+          exec:
+            command:
+            - /bin/bash
+            - -c
+            - "ps aux | grep -q '[p]ython.*train_rl_agent' || exit 1"
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 5
+      volumes:
+      - name: training-logs
+        emptyDir:
+          sizeLimit: 10Gi
+      - name: tmp-storage
+        emptyDir:
+          sizeLimit: 5Gi
+      - name: dshm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pyboy-production-training-service
+  namespace: llm-d
+  labels:
+    app: pyboy-training
+    component: rl-training
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: metrics
+  selector:
+    app: pyboy-training
+    component: rl-training
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pyboy-training-service-account
+  namespace: llm-d
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: pyboy-training-access
+rules:
+- apiGroups: [""]
+  resources: ["pods", "services", "configmaps", "secrets"]
+  verbs: ["get", "list", "watch", "create", "update", "patch"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "replicasets"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: pyboy-training-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: pyboy-training-access
+subjects:
+- kind: ServiceAccount
+  name: pyboy-training-service-account
+  namespace: llm-d

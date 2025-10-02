@@ -314,21 +314,21 @@ vision_config:
 # Behavior settings
 behavior:
   call_frequency: 10  # Call vision LLM every N steps (balance latency vs guidance)
-  alignment_bonus_multiplier: 5.0  # Base bonus reward when PPO follows LLM
+  alignment_bonus_multiplier: 2.0  # Base bonus reward when PPO follows LLM (REDUCED from 5.0 to prevent farming)
   
-  # Context-aware bonuses (multiply with base alignment bonus)
+  # Context-aware bonuses (multiply with base alignment bonus) - ALL REDUCED TO PREVENT REWARD FARMING
   # NEW OBJECTIVES: Maku Tree → Gnarled Root Dungeon progression
-  maku_tree_bonus: 20.0  # MASSIVE multiplier for entering/talking to Maku Tree
-  dungeon_entry_bonus: 15.0  # HUGE multiplier for entering Gnarled Root Dungeon
-  building_entry_bonus: 12.0  # Large multiplier for entering any building (UP at doorways)
-  vine_cutting_bonus: 8.0  # Multiplier for B button (cutting vines/bushes with sword)
-  npc_interaction_bonus: 3.0  # Multiplier for "A" near NPCs (talk to them)
-  item_collection_bonus: 15.0  # HUGE multiplier for collecting items (A button near items)
-  exploration_bonus: 2.0  # Multiplier for movement toward objectives
-  low_health_retreat_bonus: 2.5  # Multiplier for retreating when hurt
+  maku_tree_bonus: 8.0  # Multiplier for entering/talking to Maku Tree (was 20.0, now 2.0*8.0=16.0 total)
+  dungeon_entry_bonus: 10.0  # Multiplier for entering Gnarled Root Dungeon (was 15.0, now 2.0*10.0=20.0 total)
+  building_entry_bonus: 3.0  # Multiplier for entering any building (was 12.0, now 2.0*3.0=6.0 total)
+  vine_cutting_bonus: 2.5  # Multiplier for B button cutting vines (was 8.0, now 2.0*2.5=5.0 total)
+  npc_interaction_bonus: 2.0  # Multiplier for "A" near NPCs (was 3.0, now 2.0*2.0=4.0 total)
+  item_collection_bonus: 5.0  # Multiplier for collecting items (was 15.0, now 2.0*5.0=10.0 total)
+  exploration_bonus: 1.0  # Multiplier for movement toward objectives (was 2.0, now 2.0*1.0=2.0 total)
+  low_health_retreat_bonus: 1.5  # Multiplier for retreating when hurt (was 2.5, now 2.0*1.5=3.0 total)
   
-  # Environment rewards (direct rewards, not multipliers)
-  new_room_entry_reward: 50.0  # Reward for entering any new room
-  maku_tree_entry_reward: 300.0  # MASSIVE reward for first entry to Maku Tree
-  dungeon_entry_reward: 400.0  # HUGE reward for first entry to Gnarled Root Dungeon
-  item_pickup_reward: 100.0  # Large reward for picking up items
+  # Environment rewards (direct rewards, not multipliers) - REDUCED TO PREVENT FARMING
+  new_room_entry_reward: 10.0  # Reward for entering TRULY NEW room ONLY (was 50.0, now checks uniqueness)
+  maku_tree_entry_reward: 100.0  # Reward for first entry to Maku Tree (was 300.0)
+  dungeon_entry_reward: 150.0  # Reward for first entry to Gnarled Root Dungeon (was 400.0)
+  item_pickup_reward: 5.0  # Reward for picking up items (was 100.0)

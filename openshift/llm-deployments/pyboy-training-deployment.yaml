@@ -1,0 +1,199 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pyboy-training
+  namespace: llm-d
+  labels:
+    app.kubernetes.io/name: pyboy-training
+    app: pyboy-training
+    component: rl-training
+spec:
+  replicas: 5  # 5 pods across 5 nodes for distributed training
+  selector:
+    matchLabels:
+      app: pyboy-training
+      component: rl-training
+  template:
+    metadata:
+      labels:
+        app: pyboy-training
+        component: rl-training
+    spec:
+      nodeSelector:
+        node-role.kubernetes.io/pyboy-training: ""
+      tolerations:
+      - key: "pyboy-training"
+        operator: "Equal"
+        value: "true"
+        effect: "NoSchedule"
+      serviceAccount: pyboy-training-service-account
+      serviceAccountName: pyboy-training-service-account
+      containers:
+      - name: pyboy-trainer
+        image: quay.io/cnuland/hello-chris-rl-llm-zelda:latest  # Your training image
+        command: ["/bin/bash"]
+        args:
+        - -c
+        - |
+          #!/bin/bash
+          set -e
+          
+          # Set up environment for headless PyBoy instances
+          export DISPLAY=:99
+          export PYBOY_HEADLESS=1
+          export CUDA_VISIBLE_DEVICES=0
+          export OMP_NUM_THREADS=4
+          
+          # Start virtual display for headless operation
+          Xvfb :99 -screen 0 1024x768x16 &
+          
+          # Launch multiple PyBoy training instances (20 per pod = 100 total)
+          for i in {1..20}; do
+            echo "Starting PyBoy training instance $i"
+            python3 /app/train_rl_agent.py \
+              --instance-id $i \
+              --gpu-device 0 \
+              --shared-device true \
+              --headless true \
+              --rom /roms/zelda.gb \
+              --episodes 1000 \
+              --save-interval 100 \
+              --log-dir /training-logs/instance-$i &
+          done
+          
+          # Wait for all background processes
+          wait
+        env:
+        - name: PYTHONPATH
+          value: "/app:/app/pyboy"
+        - name: CUDA_DEVICE_ORDER
+          value: "PCI_BUS_ID"
+        - name: NVIDIA_VISIBLE_DEVICES
+          value: "all"
+        - name: NVIDIA_DRIVER_CAPABILITIES
+          value: "compute,utility,graphics"
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        resources:
+          limits:
+            nvidia.com/gpu: "1"  # Each pod gets 1 GPU shared across 20 instances
+            memory: "16Gi"
+            cpu: "8"
+          requests:
+            nvidia.com/gpu: "1"
+            memory: "12Gi"
+            cpu: "4"
+        volumeMounts:
+        - mountPath: /roms
+          name: rom-storage
+        - mountPath: /training-logs
+          name: training-logs
+        - mountPath: /app/models
+          name: model-storage
+        - mountPath: /tmp
+          name: tmp-storage
+        - mountPath: /dev/shm
+          name: dshm
+        ports:
+        - containerPort: 8080
+          name: metrics
+          protocol: TCP
+        - containerPort: 6006
+          name: tensorboard
+          protocol: TCP
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 5
+      volumes:
+      - name: rom-storage
+        configMap:
+          name: zelda-rom-config
+      - name: training-logs
+        emptyDir:
+          sizeLimit: 50Gi
+      - name: model-storage
+        emptyDir:
+          sizeLimit: 100Gi
+      - name: tmp-storage
+        emptyDir:
+          sizeLimit: 20Gi
+      - name: dshm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pyboy-training-service
+  namespace: llm-d
+  labels:
+    app: pyboy-training
+    component: rl-training
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: metrics
+  - port: 6006
+    targetPort: 6006
+    protocol: TCP
+    name: tensorboard
+  selector:
+    app: pyboy-training
+    component: rl-training
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pyboy-training-service-account
+  namespace: llm-d
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: pyboy-training-access
+rules:
+- apiGroups: [""]
+  resources: ["pods", "services", "configmaps", "secrets"]
+  verbs: ["get", "list", "watch", "create", "update", "patch"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "replicasets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["metrics.k8s.io"]
+  resources: ["pods", "nodes"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: pyboy-training-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: pyboy-training-access
+subjects:
+- kind: ServiceAccount
+  name: pyboy-training-service-account
+  namespace: llm-d

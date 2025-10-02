@@ -350,7 +350,7 @@ class ZeldaStateEncoder:
             # Resources (normalized)
             vector[idx:idx+4] = [
                 min(structured_state['resources']['rupees'] / 999.0, 1.0),
-                min(structured_state['resources']['keys'] / 99.0, 1.0),
+                min(structured_state['dungeon']['keys'] / 99.0, 1.0),  # Fixed: keys are in dungeon, not resources
                 structured_state['resources']['sword_level'] / 4.0,
                 structured_state['resources']['shield_level'] / 3.0,
             ]
