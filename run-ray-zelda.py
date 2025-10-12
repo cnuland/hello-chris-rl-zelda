@@ -76,7 +76,7 @@ config = (
         entropy_coeff=0.01,         # Entropy bonus
         train_batch_size_per_learner=4096,  # Training batch size per learner
         minibatch_size=512,         # Mini-batch size for SGD
-        num_sgd_iter=10,            # SGD iterations per update
+        num_epochs=10,              # Training epochs per update (was num_sgd_iter)
     )
     .resources(
         num_gpus=1,  # Use GPU if available
