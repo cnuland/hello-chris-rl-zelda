@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rl-zelda-hud
+  labels:
+    app: rl-zelda-hud
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rl-zelda-hud
+  template:
+    metadata:
+      labels:
+        app: rl-zelda-hud
+    spec:
+      containers:
+      - name: rl-zelda-hud
+        image: quay.io/cnuland/rl-zelda-web-server:latest
+        ports:
+        - containerPort: 8086
+          protocol: TCP
+        resources:
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8086
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8086
+          initialDelaySeconds: 5
+          periodSeconds: 5

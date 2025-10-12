@@ -57,9 +57,9 @@ config = (
     PPOConfig()
     .environment(env="zelda_env", env_config=env_config)
     .framework("torch")
-    .rollouts(
-        num_rollout_workers=num_rollout_workers,
-        num_envs_per_worker=num_envs_per_worker,
+    .env_runners(
+        num_env_runners=num_rollout_workers,
+        num_envs_per_env_runner=num_envs_per_worker,
     )
     .callbacks(ZeldaHUDCallback)
     .training(
@@ -85,8 +85,8 @@ config = (
 
 # Run training
 print("🎮 Starting Zelda Oracle of Seasons Ray RLlib Training")
-print(f"   Workers: {num_rollout_workers}")
-print(f"   Envs per worker: {num_envs_per_worker}")
+print(f"   Env Runners (Workers): {num_rollout_workers}")
+print(f"   Envs per runner: {num_envs_per_worker}")
 print(f"   Total parallel environments: {num_rollout_workers * num_envs_per_worker}")
 print(f"   Episode length: {ep_length}")
 print("="*60)

@@ -154,12 +154,13 @@ class ZeldaHUDCallback(DefaultCallbacks):
         # Try to get a screenshot from THE DESIGNATED environment only
         # We query the specific worker that we've designated as the HUD reporter
         try:
-            workers = algorithm.workers
-            if workers:
+            # Try new API first (env_runners), fallback to old API (workers)
+            env_runners = getattr(algorithm, 'env_runners', None) or getattr(algorithm, 'workers', None)
+            if env_runners:
                 # Get the designated worker (worker_index=1)
-                remote_workers = workers.remote_workers()
-                if len(remote_workers) >= self.HUD_WORKER_INDEX:
-                    designated_worker = remote_workers[self.HUD_WORKER_INDEX - 1]  # -1 because list is 0-indexed
+                remote_runners = getattr(env_runners, 'remote_env_runners', lambda: env_runners.remote_workers())()
+                if len(remote_runners) >= self.HUD_WORKER_INDEX:
+                    designated_worker = remote_runners[self.HUD_WORKER_INDEX - 1]  # -1 because list is 0-indexed
                     
                     # Try to get screenshot from that worker's env 0
                     # This is environment-specific and may not always work
