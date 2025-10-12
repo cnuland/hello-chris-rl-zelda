@@ -1,0 +1,90 @@
+---
+# HUD Server Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zelda-hud
+  namespace: zelda-hybrid-rl-llm
+  labels:
+    app: zelda-hud
+    component: dashboard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: zelda-hud
+  template:
+    metadata:
+      labels:
+        app: zelda-hud
+        component: dashboard
+    spec:
+      containers:
+      - name: hud-server
+        image: quay.io/cnuland/dd-kuberay-worker:latest  # Same image, has Python/Flask
+        command:
+          - python
+          - HUD/hud_server.py
+        ports:
+        - name: http
+          containerPort: 8086
+          protocol: TCP
+        env:
+        - name: FLASK_ENV
+          value: "production"
+        resources:
+          requests:
+            cpu: "0.5"
+            memory: "512Mi"
+          limits:
+            cpu: "1"
+            memory: "1Gi"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8086
+          initialDelaySeconds: 10
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8086
+          initialDelaySeconds: 5
+          periodSeconds: 10
+---
+# HUD Service (internal cluster access)
+apiVersion: v1
+kind: Service
+metadata:
+  name: zelda-hud-service
+  namespace: zelda-hybrid-rl-llm
+  labels:
+    app: zelda-hud
+spec:
+  selector:
+    app: zelda-hud
+  ports:
+  - name: http
+    port: 8086
+    targetPort: 8086
+    protocol: TCP
+  type: ClusterIP
+---
+# HUD Route (external browser access)
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: zelda-hud-route
+  namespace: zelda-hybrid-rl-llm
+  labels:
+    app: zelda-hud
+spec:
+  to:
+    kind: Service
+    name: zelda-hud-service
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+

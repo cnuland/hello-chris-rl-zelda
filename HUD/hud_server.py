@@ -9,7 +9,7 @@ import time
 import threading
 import uuid
 from queue import Queue, Empty
-from flask import Flask, render_template, Response
+from flask import Flask, render_template, Response, request, jsonify
 from flask_cors import CORS
 
 app = Flask(__name__)
@@ -118,6 +118,49 @@ def stream():
             'X-Accel-Buffering': 'no'
         }
     )
+
+
+@app.route('/api/register_session', methods=['POST'])
+def api_register_session():
+    """API endpoint to register a new training session"""
+    session_id = register_session()
+    if session_id:
+        return jsonify({'session_id': session_id, 'status': 'registered'}), 200
+    else:
+        return jsonify({'error': 'Another session is active'}), 409
+
+
+@app.route('/api/update_training', methods=['POST'])
+def api_update_training():
+    """API endpoint to update training data"""
+    data = request.json
+    session_id = data.get('session_id')
+    training_data = data.get('data', {})
+    
+    if update_training_data(training_data, session_id):
+        return jsonify({'status': 'updated'}), 200
+    else:
+        return jsonify({'error': 'Session not active'}), 403
+
+
+@app.route('/api/update_vision', methods=['POST'])
+def api_update_vision():
+    """API endpoint to update vision data"""
+    data = request.json
+    session_id = data.get('session_id')
+    image_base64 = data.get('image_base64')
+    response_time = data.get('response_time')
+    
+    if update_vision_data(image_base64, response_time, session_id):
+        return jsonify({'status': 'updated'}), 200
+    else:
+        return jsonify({'error': 'Session not active'}), 403
+
+
+@app.route('/health', methods=['GET'])
+def health():
+    """Health check endpoint for Kubernetes"""
+    return jsonify({'status': 'healthy'}), 200
 
 
 def update_training_data(data, session_id=None):

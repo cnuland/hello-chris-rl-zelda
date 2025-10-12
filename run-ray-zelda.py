@@ -5,7 +5,9 @@ Uses vector observations + vision LLM (matches existing hybrid approach)
 
 from pathlib import Path
 import uuid
+import os
 from ray_zelda_env import ZeldaRayEnv
+from ray_hud_callback import ZeldaHUDCallback
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -42,6 +44,13 @@ register_env("zelda_env", lambda config: ZeldaRayEnv(config))
 # Initialize Ray
 ray.init()
 
+# Print HUD configuration
+hud_url = os.environ.get('HUD_URL')
+if hud_url:
+    print(f"🖥️  HUD Dashboard enabled: {hud_url}")
+else:
+    print("⚠️  HUD_URL not set - dashboard disabled")
+
 # Configure PPO algorithm
 # Hyperparameters match your existing hybrid vision approach
 config = (
@@ -52,6 +61,7 @@ config = (
         num_rollout_workers=num_rollout_workers,
         num_envs_per_worker=num_envs_per_worker,
     )
+    .callbacks(ZeldaHUDCallback)
     .training(
         model={
             "custom_model": "zelda_mlp",
