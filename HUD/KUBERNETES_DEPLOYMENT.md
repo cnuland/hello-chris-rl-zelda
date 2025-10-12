@@ -224,6 +224,21 @@ if client.enabled:
 - LLM response time
 - Updated every LLM call (configurable frequency)
 
+### Single Episode Viewer
+
+**Important:** With 9 parallel training environments (3 workers × 3 envs each), only **ONE designated environment** sends data to the HUD to avoid confusion.
+
+- **Designated Reporter:** Worker 1, Environment 0
+- **Why:** Prevents rapid switching between different episodes
+- **Result:** Viewer sees ONE consistent episode throughout training
+- **Note:** All 9 environments still train; only display data comes from one
+
+To change which environment is viewable, modify in `ray_hud_callback.py`:
+```python
+HUD_WORKER_INDEX = 1  # First rollout worker
+HUD_ENV_ID = 0        # First environment on that worker
+```
+
 ### UI Features
 
 - Auto-scrolling metrics table
