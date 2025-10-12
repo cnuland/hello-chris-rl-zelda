@@ -1,0 +1,34 @@
+# Containerfile for VLM Vision Hybrid HUD Server
+# Lightweight Flask server for real-time training visualization
+
+FROM python:3.11-slim
+
+LABEL maintainer="Zelda RL Team"
+LABEL description="VLM Vision Hybrid HUD Dashboard Server"
+
+# Set working directory
+WORKDIR /app
+
+# Copy HUD files
+COPY hud_server.py /app/
+COPY templates/ /app/templates/
+COPY static/ /app/static/
+COPY requirements.txt /app/
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Expose port
+EXPOSE 8086
+
+# Set environment variables
+ENV FLASK_ENV=production
+ENV PYTHONUNBUFFERED=1
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD python -c "import requests; requests.get('http://localhost:8086/health', timeout=5)"
+
+# Run the HUD server
+CMD ["python", "hud_server.py"]
+

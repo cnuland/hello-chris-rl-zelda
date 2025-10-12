@@ -21,10 +21,8 @@ spec:
     spec:
       containers:
       - name: hud-server
-        image: quay.io/cnuland/dd-kuberay-worker:latest  # Same image, has Python/Flask
-        command:
-          - python
-          - HUD/hud_server.py
+        image: quay.io/cnuland/zelda-hud:latest  # Dedicated HUD image
+        imagePullPolicy: Always
         ports:
         - name: http
           containerPort: 8086
