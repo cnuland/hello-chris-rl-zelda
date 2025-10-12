@@ -83,7 +83,7 @@ config = (
         num_epochs=10,              # Training epochs per update (was num_sgd_iter)
     )
     .resources(
-        num_gpus=1,  # Use GPU if available
+        num_gpus=0,  # CPU-only training (cluster has no GPUs)
     )
 )
 
