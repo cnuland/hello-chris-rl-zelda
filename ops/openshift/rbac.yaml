@@ -1,0 +1,89 @@
+---
+# Service Account for Ray cluster management
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: zelda-rl-training
+  namespace: zelda-hybrid-rl-llm
+---
+# Role with permissions to manage Ray clusters
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ray-cluster-manager
+  namespace: zelda-hybrid-rl-llm
+rules:
+  # RayCluster CRD permissions
+  - apiGroups: ["ray.io"]
+    resources: ["rayclusters"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  
+  # Pod permissions (needed to monitor Ray pods)
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch"]
+  
+  # Service permissions (Ray head service)
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  
+  # Event permissions (for troubleshooting)
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+  
+  # Secret permissions (for image pull secrets)
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list"]
+  
+  # ConfigMap permissions (Ray config)
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  
+  # Route permissions (for Ray dashboard)
+  - apiGroups: ["route.openshift.io"]
+    resources: ["routes"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+---
+# RoleBinding to grant permissions to service account
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: zelda-rl-training-ray-manager
+  namespace: zelda-hybrid-rl-llm
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ray-cluster-manager
+subjects:
+  - kind: ServiceAccount
+    name: zelda-rl-training
+    namespace: zelda-hybrid-rl-llm
+---
+# Additional ClusterRole for Kueue workload management (optional)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kueue-workload-viewer
+rules:
+  - apiGroups: ["kueue.x-k8s.io"]
+    resources: ["workloads", "localqueues", "clusterqueues"]
+    verbs: ["get", "list", "watch"]
+---
+# ClusterRoleBinding for Kueue permissions (optional)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: zelda-rl-training-kueue-viewer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kueue-workload-viewer
+subjects:
+  - kind: ServiceAccount
+    name: zelda-rl-training
+    namespace: zelda-hybrid-rl-llm
+
