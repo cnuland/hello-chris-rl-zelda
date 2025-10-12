@@ -74,8 +74,8 @@ config = (
         clip_param=0.2,             # PPO clip parameter
         vf_clip_param=10.0,         # Value function clip
         entropy_coeff=0.01,         # Entropy bonus
-        train_batch_size=4096,      # Training batch size
-        mini_batch_size_per_learner=512,  # Mini-batch size (was sgd_minibatch_size)
+        train_batch_size_per_learner=4096,  # Training batch size per learner
+        minibatch_size=512,         # Mini-batch size for SGD
         num_sgd_iter=10,            # SGD iterations per update
     )
     .resources(
