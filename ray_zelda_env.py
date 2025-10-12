@@ -72,12 +72,8 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         if path.exists():
             return str(path)
         
-        # Try relative to CWD
-        cwd_path = Path.cwd() / path
-        if cwd_path.exists():
-            return str(cwd_path)
-        
-        # Try relative to script directory
+        # Try relative to script directory (Ray working_dir extraction location)
+        # This is the most reliable for Ray, as __file__ will be in the extracted working_dir
         try:
             script_dir = Path(__file__).parent.resolve()
             script_path = script_dir / path
@@ -86,8 +82,25 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         except NameError:
             pass
         
+        # Try relative to CWD
+        cwd_path = Path.cwd() / path
+        if cwd_path.exists():
+            return str(cwd_path)
+        
+        # Last resort: check WORKING_DIR env var (set by Ray)
+        working_dir = os.environ.get('RAY_WORKING_DIR')
+        if working_dir:
+            working_dir_path = Path(working_dir) / path
+            if working_dir_path.exists():
+                return str(working_dir_path)
+        
         # Return original if not found (will error later with clear message)
         print(f"⚠️  Warning: Could not resolve path: {path_str}")
+        print(f"   Tried:")
+        print(f"     - As-is: {path}")
+        print(f"     - Script dir: {Path(__file__).parent.resolve() / path if '__file__' in globals() else 'N/A'}")
+        print(f"     - CWD: {Path.cwd() / path}")
+        print(f"     - Working dir: {Path(working_dir) / path if working_dir else 'N/A'}")
         return str(path)
     
     def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None) -> Tuple[np.ndarray, dict]:
