@@ -57,6 +57,10 @@ config = (
     PPOConfig()
     .environment(env="zelda_env", env_config=env_config)
     .framework("torch")
+    .api_stack(
+        enable_rl_module_and_learner=False,
+        enable_env_runner_and_connector_v2=False,
+    )
     .env_runners(
         num_env_runners=num_rollout_workers,
         num_envs_per_env_runner=num_envs_per_worker,
