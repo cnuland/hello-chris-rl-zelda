@@ -35,6 +35,39 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         """
         config = config if config is not None else {}
         
+        # DEBUG: Print environment info
+        print("\n" + "="*70)
+        print("🔍 DEBUG: ZeldaRayEnv Path Resolution")
+        print("="*70)
+        print(f"CWD: {Path.cwd()}")
+        print(f"__file__: {__file__ if '__file__' in globals() else 'N/A'}")
+        print(f"Script dir: {Path(__file__).parent.resolve()}")
+        print(f"\nCWD contents:")
+        try:
+            for item in sorted(Path.cwd().iterdir())[:20]:
+                print(f"  - {item.name}{'/' if item.is_dir() else ''}")
+        except Exception as e:
+            print(f"  Error listing CWD: {e}")
+        
+        print(f"\nScript dir contents:")
+        try:
+            script_dir = Path(__file__).parent.resolve()
+            for item in sorted(script_dir.iterdir())[:20]:
+                print(f"  - {item.name}{'/' if item.is_dir() else ''}")
+        except Exception as e:
+            print(f"  Error listing script dir: {e}")
+        
+        print(f"\nLooking for 'roms' directory:")
+        cwd_roms = Path.cwd() / 'roms'
+        script_roms = Path(__file__).parent.resolve() / 'roms'
+        print(f"  - CWD/roms exists: {cwd_roms.exists()}")
+        if cwd_roms.exists():
+            print(f"    Contents: {list(cwd_roms.iterdir())[:5]}")
+        print(f"  - Script/roms exists: {script_roms.exists()}")
+        if script_roms.exists():
+            print(f"    Contents: {list(script_roms.iterdir())[:5]}")
+        print("="*70 + "\n")
+        
         # Extract paths and configuration
         rom_path = config.get('gb_path', 'roms/zelda_oracle_of_seasons.gbc')
         config_path = config.get('env_config_path', 'configs/env.yaml')
@@ -66,41 +99,51 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
     @staticmethod
     def _resolve_path(path_str: str) -> str:
         """Resolve path relative to script directory or CWD."""
+        print(f"\n🔍 Resolving path: {path_str}")
         path = Path(path_str)
         
         # Try as-is (absolute or correct relative)
+        print(f"  Trying as-is: {path}")
         if path.exists():
+            print(f"    ✅ Found!")
             return str(path)
+        print(f"    ❌ Not found")
         
         # Try relative to script directory (Ray working_dir extraction location)
         # This is the most reliable for Ray, as __file__ will be in the extracted working_dir
         try:
             script_dir = Path(__file__).parent.resolve()
             script_path = script_dir / path
+            print(f"  Trying script dir: {script_path}")
             if script_path.exists():
+                print(f"    ✅ Found!")
                 return str(script_path)
+            print(f"    ❌ Not found")
         except NameError:
-            pass
+            print(f"  Script dir: N/A (__file__ not available)")
         
         # Try relative to CWD
         cwd_path = Path.cwd() / path
+        print(f"  Trying CWD: {cwd_path}")
         if cwd_path.exists():
+            print(f"    ✅ Found!")
             return str(cwd_path)
+        print(f"    ❌ Not found")
         
         # Last resort: check WORKING_DIR env var (set by Ray)
         working_dir = os.environ.get('RAY_WORKING_DIR')
         if working_dir:
             working_dir_path = Path(working_dir) / path
+            print(f"  Trying RAY_WORKING_DIR: {working_dir_path}")
             if working_dir_path.exists():
+                print(f"    ✅ Found!")
                 return str(working_dir_path)
+            print(f"    ❌ Not found")
+        else:
+            print(f"  RAY_WORKING_DIR env var: Not set")
         
         # Return original if not found (will error later with clear message)
-        print(f"⚠️  Warning: Could not resolve path: {path_str}")
-        print(f"   Tried:")
-        print(f"     - As-is: {path}")
-        print(f"     - Script dir: {Path(__file__).parent.resolve() / path if '__file__' in globals() else 'N/A'}")
-        print(f"     - CWD: {Path.cwd() / path}")
-        print(f"     - Working dir: {Path(working_dir) / path if working_dir else 'N/A'}")
+        print(f"  ⚠️  ALL ATTEMPTS FAILED - returning original path")
         return str(path)
     
     def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None) -> Tuple[np.ndarray, dict]:
