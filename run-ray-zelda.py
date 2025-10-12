@@ -68,14 +68,14 @@ config = (
             "fcnet_hiddens": [256],  # Hidden layer size (matches PolicyNetwork)
         },
         # PPO hyperparameters (matching your existing implementation)
-        lr=3e-4,            # Learning rate
-        gamma=0.99,         # Discount factor
-        lambda_=0.95,       # GAE lambda
-        clip_param=0.2,     # PPO clip parameter
-        vf_clip_param=10.0, # Value function clip
-        entropy_coeff=0.01, # Entropy bonus
+        lr=3e-4,                    # Learning rate
+        gamma=0.99,                 # Discount factor
+        lambda_=0.95,               # GAE lambda
+        clip_param=0.2,             # PPO clip parameter
+        vf_clip_param=10.0,         # Value function clip
+        entropy_coeff=0.01,         # Entropy bonus
         train_batch_size=4096,      # Training batch size
-        sgd_minibatch_size=512,     # SGD minibatch size
+        mini_batch_size_per_learner=512,  # Mini-batch size (was sgd_minibatch_size)
         num_sgd_iter=10,            # SGD iterations per update
     )
     .resources(
