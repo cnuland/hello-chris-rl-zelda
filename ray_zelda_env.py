@@ -126,19 +126,42 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
     
     def _init_vision_llm(self):
         """Initialize vision LLM integration if enabled in config."""
-        # Check if LLM is enabled from environment config
-        planner_config = self.config.get('planner_integration', {}) if hasattr(self, 'config') and self.config else {}
-        self.llm_enabled = planner_config.get('use_planner', False) and planner_config.get('enable_visual', False)
+        # Initialize as disabled by default
+        self.llm_enabled = False
+        self.llm_call_count = 0
+        self.llm_success_count = 0
+        self.last_llm_suggestion = None
+        self.last_llm_action = None
         
-        if not self.llm_enabled:
-            print("   🧠 Vision LLM: DISABLED")
+        # Check if LLM is enabled from environment config
+        try:
+            if not hasattr(self, 'config') or not self.config:
+                print("   🧠 Vision LLM: DISABLED (no config)")
+                return
+            
+            planner_config = self.config.get('planner_integration', {})
+            if not planner_config:
+                print("   🧠 Vision LLM: DISABLED (no planner_integration in config)")
+                return
+            
+            use_planner = planner_config.get('use_planner', False)
+            enable_visual = planner_config.get('enable_visual', False)
+            
+            if not (use_planner and enable_visual):
+                print(f"   🧠 Vision LLM: DISABLED (use_planner={use_planner}, enable_visual={enable_visual})")
+                return
+            
+            self.llm_enabled = True
+            
+        except Exception as e:
+            print(f"   ❌ Error checking LLM config: {e}")
             return
         
         # Load vision prompt configuration
-        vision_config_path = planner_config.get('vision_prompt_config', 'configs/vision_prompt.yaml')
-        vision_config_path = self._resolve_path(vision_config_path)
-        
         try:
+            vision_config_path = planner_config.get('vision_prompt_config', 'configs/vision_prompt.yaml')
+            vision_config_path = self._resolve_path(vision_config_path)
+            
             with open(vision_config_path, 'r') as f:
                 vision_config = yaml.safe_load(f)
             
@@ -164,17 +187,16 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                 self.llm_enabled = False
                 return
             
-            # LLM tracking
-            self.llm_call_count = 0
-            self.llm_success_count = 0
-            self.last_llm_suggestion = None
-            self.last_llm_action = None
-            
             print(f"   ✅ Vision LLM config loaded from: {vision_config_path}")
             print(f"   📡 LLM Endpoint: {self.llm_endpoint}")
             
+        except FileNotFoundError as e:
+            print(f"   ❌ Vision config file not found: {e}")
+            print(f"   Vision LLM disabled")
+            self.llm_enabled = False
         except Exception as e:
             print(f"   ❌ Failed to load vision config: {e}")
+            print(f"   Vision LLM disabled")
             self.llm_enabled = False
     
     @staticmethod
