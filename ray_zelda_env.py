@@ -8,9 +8,17 @@ from typing import Optional, Tuple, Dict, Any
 import numpy as np
 from pathlib import Path
 import os
+import threading
 
 # Import our existing Zelda environment
 from emulator.zelda_env_configurable import ZeldaConfigurableEnvironment
+
+# Import ROM download utility
+from init_rom import init_rom_from_s3
+
+# Global lock to ensure only one download per pod
+_rom_download_lock = threading.Lock()
+_rom_downloaded = False
 
 
 class ZeldaRayEnv(ZeldaConfigurableEnvironment):
@@ -73,6 +81,9 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         config_path = config.get('env_config_path', 'configs/env.yaml')
         headless = config.get('headless', True)
         
+        # Ensure ROM files are downloaded (once per pod, thread-safe)
+        self._ensure_rom_files(rom_path)
+        
         # Resolve paths robustly
         rom_path = self._resolve_path(rom_path)
         config_path = self._resolve_path(config_path)
@@ -95,6 +106,54 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         print(f"   Config: {config_path}")
         print(f"   Observation space: {self.observation_space.shape}")
         print(f"   Action space: {self.action_space}")
+    
+    @staticmethod
+    def _ensure_rom_files(rom_path: str):
+        """
+        Ensure ROM files are downloaded on this worker pod.
+        Uses a global lock to ensure only one download per pod, even with multiple environments.
+        """
+        global _rom_downloaded
+        
+        # Quick check without lock (most common case: ROM already downloaded)
+        if _rom_downloaded:
+            return
+        
+        # Acquire lock for thread-safe download check/execution
+        with _rom_download_lock:
+            # Double-check inside lock (another thread may have downloaded while we waited)
+            if _rom_downloaded:
+                return
+            
+            # Check if ROM file exists
+            rom_file = Path(rom_path)
+            # Also check in CWD (Ray's working_dir extraction location)
+            cwd_rom = Path.cwd() / rom_path
+            
+            if rom_file.exists() or cwd_rom.exists():
+                print(f"✅ ROM file found, no download needed")
+                _rom_downloaded = True
+                return
+            
+            # ROM doesn't exist - download from S3
+            print(f"\n{'='*70}")
+            print(f"📥 ROM files not found on this worker pod - downloading from S3...")
+            print(f"{'='*70}")
+            
+            try:
+                success = init_rom_from_s3()
+                if success:
+                    print(f"✅ ROM download successful!")
+                    _rom_downloaded = True
+                else:
+                    print(f"⚠️  ROM download reported failure, but continuing...")
+                    # Don't set _rom_downloaded=True so next env will try again
+            except Exception as e:
+                print(f"❌ Error downloading ROM: {e}")
+                print(f"   Training will likely fail, but letting it try...")
+                # Don't set _rom_downloaded=True so next env will try again
+            
+            print(f"{'='*70}\n")
     
     @staticmethod
     def _resolve_path(path_str: str) -> str:
