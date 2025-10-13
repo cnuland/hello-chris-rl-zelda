@@ -192,8 +192,15 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                 self.llm_enabled = False
                 return
             
+            # LLM model name (optional - if empty, don't send model parameter)
+            self.llm_model_name = planner_config.get('llm_model_name', '')
+            
             print(f"   ✅ Vision LLM config loaded from: {vision_config_path}")
             print(f"   📡 LLM Endpoint: {self.llm_endpoint}")
+            if self.llm_model_name:
+                print(f"   🤖 Model: {self.llm_model_name}")
+            else:
+                print(f"   🤖 Model: (using server default)")
             
         except FileNotFoundError as e:
             print(f"   ❌ Vision config file not found: {e}")
@@ -429,7 +436,6 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
             
             # Prepare API request
             payload = {
-                "model": "llama-4-scout",  # Vision-capable model
                 "messages": [
                     {
                         "role": "system",
@@ -455,6 +461,10 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                 "temperature": 0.7
             }
             
+            # Only include model parameter if specified in config
+            if self.llm_model_name:
+                payload["model"] = self.llm_model_name
+            
             # Call LLM API
             response = requests.post(
                 self.llm_endpoint,
@@ -467,7 +477,22 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                 suggestion = result.get('choices', [{}])[0].get('message', {}).get('content', '').strip()
                 return suggestion if suggestion else None
             else:
-                print(f"⚠️  LLM returned status {response.status_code}")
+                # Log detailed error for debugging
+                error_msg = f"⚠️  LLM returned status {response.status_code}"
+                try:
+                    error_detail = response.json()
+                    error_msg += f" - {error_detail}"
+                except:
+                    error_msg += f" - {response.text[:200]}"
+                
+                # Only print first error to avoid spam
+                if not hasattr(self, '_llm_error_logged'):
+                    print(error_msg)
+                    print(f"   Endpoint: {self.llm_endpoint}")
+                    print(f"   Model: {self.llm_model_name if self.llm_model_name else '(server default)'}")
+                    print(f"   Tip: Check if endpoint supports vision API (image_url content type)")
+                    print(f"   Tip: Or set llm_model_name in env.yaml if specific model needed")
+                    self._llm_error_logged = True
                 return None
                 
         except requests.exceptions.Timeout:
