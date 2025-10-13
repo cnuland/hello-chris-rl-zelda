@@ -9,6 +9,12 @@ import numpy as np
 from pathlib import Path
 import os
 import threading
+import time
+import yaml
+import requests
+import base64
+import io
+from PIL import Image
 
 # Import our existing Zelda environment
 from emulator.zelda_env_configurable import ZeldaConfigurableEnvironment
@@ -106,11 +112,70 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         self.ray_config = config
         self.instance_id = config.get('worker_index', 0)
         
+        # Initialize Vision LLM integration if enabled
+        self._init_vision_llm()
+        
         print(f"✅ ZeldaRayEnv initialized (Instance: {self.instance_id})")
         print(f"   ROM: {rom_path}")
         print(f"   Config: {config_path}")
         print(f"   Observation space: {self.observation_space.shape}")
         print(f"   Action space: {self.action_space}")
+        if self.llm_enabled:
+            print(f"   🧠 Vision LLM: ENABLED (every {self.llm_frequency} steps)")
+            print(f"   📸 Image: {160*self.image_scale}×{144*self.image_scale}, {self.image_quality}% JPEG")
+    
+    def _init_vision_llm(self):
+        """Initialize vision LLM integration if enabled in config."""
+        # Check if LLM is enabled from environment config
+        planner_config = self.config.get('planner_integration', {}) if hasattr(self, 'config') and self.config else {}
+        self.llm_enabled = planner_config.get('use_planner', False) and planner_config.get('enable_visual', False)
+        
+        if not self.llm_enabled:
+            print("   🧠 Vision LLM: DISABLED")
+            return
+        
+        # Load vision prompt configuration
+        vision_config_path = planner_config.get('vision_prompt_config', 'configs/vision_prompt.yaml')
+        vision_config_path = self._resolve_path(vision_config_path)
+        
+        try:
+            with open(vision_config_path, 'r') as f:
+                vision_config = yaml.safe_load(f)
+            
+            # Extract LLM settings
+            self.llm_frequency = planner_config.get('llm_frequency', vision_config.get('behavior', {}).get('call_frequency', 5))
+            self.alignment_bonus_multiplier = planner_config.get('alignment_bonus_multiplier', vision_config.get('behavior', {}).get('alignment_bonus_multiplier', 2.0))
+            
+            # Extract vision settings
+            self.image_scale = planner_config.get('image_scale', vision_config.get('vision_config', {}).get('image_scale', 2))
+            self.image_quality = planner_config.get('image_quality', vision_config.get('vision_config', {}).get('image_quality', 75))
+            self.image_format = planner_config.get('image_format', vision_config.get('vision_config', {}).get('image_format', 'jpeg'))
+            
+            # Store prompts
+            self.system_prompt = vision_config.get('system_prompt', '')
+            self.user_prompt_template = vision_config.get('vision_user_prompt_template', '')
+            
+            # LLM endpoint from environment variable
+            llm_endpoint_var = planner_config.get('llm_endpoint_env_var', 'LLM_ENDPOINT')
+            self.llm_endpoint = os.environ.get(llm_endpoint_var, '')
+            
+            if not self.llm_endpoint:
+                print(f"   ⚠️  {llm_endpoint_var} not set, Vision LLM disabled")
+                self.llm_enabled = False
+                return
+            
+            # LLM tracking
+            self.llm_call_count = 0
+            self.llm_success_count = 0
+            self.last_llm_suggestion = None
+            self.last_llm_action = None
+            
+            print(f"   ✅ Vision LLM config loaded from: {vision_config_path}")
+            print(f"   📡 LLM Endpoint: {self.llm_endpoint}")
+            
+        except Exception as e:
+            print(f"   ❌ Failed to load vision config: {e}")
+            self.llm_enabled = False
     
     @staticmethod
     def _ensure_rom_files(rom_path: str):
@@ -243,6 +308,122 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         
         return obs, info
     
+    def capture_screenshot_base64(self) -> Optional[str]:
+        """Capture Game Boy screen as base64-encoded JPEG for LLM."""
+        if not self.llm_enabled:
+            return None
+        
+        try:
+            # Get screen data from PyBoy
+            screen_array = self.bridge.pyboy.screen.ndarray.copy()
+            
+            # Convert to PIL Image
+            image = Image.fromarray(screen_array)
+            
+            # Upscale for better LLM understanding
+            if self.image_scale > 1:
+                new_size = (image.width * self.image_scale, image.height * self.image_scale)
+                image = image.resize(new_size, Image.Resampling.NEAREST)
+            
+            # Convert to JPEG and encode as base64
+            buffer = io.BytesIO()
+            image.save(buffer, format="JPEG", quality=self.image_quality)
+            img_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+            
+            return img_base64
+            
+        except Exception as e:
+            print(f"⚠️  Screenshot capture failed: {e}")
+            return None
+    
+    def call_llm_vision(self, game_state: Dict, screenshot_base64: Optional[str] = None) -> Optional[str]:
+        """Call vision LLM with screenshot and game state."""
+        if not self.llm_enabled or not screenshot_base64:
+            return None
+        
+        try:
+            # Format prompt with game state
+            user_prompt = self.user_prompt_template.format(
+                location=game_state.get('location', {}).get('name', 'Unknown'),
+                cave_hint=game_state.get('location', {}).get('cave_hint', ''),
+                health=game_state.get('stats', {}).get('health', 0),
+                max_health=game_state.get('stats', {}).get('max_health', 0),
+                x=game_state.get('location', {}).get('x', 0),
+                y=game_state.get('location', {}).get('y', 0),
+                npc_count=len(game_state.get('entities', {}).get('npcs', [])),
+                enemy_count=len(game_state.get('entities', {}).get('enemies', [])),
+                item_count=len(game_state.get('entities', {}).get('items', []))
+            )
+            
+            # Prepare API request
+            payload = {
+                "model": "llama-4-scout",  # Vision-capable model
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": self.system_prompt
+                    },
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/jpeg;base64,{screenshot_base64}"
+                                }
+                            },
+                            {
+                                "type": "text",
+                                "text": user_prompt
+                            }
+                        ]
+                    }
+                ],
+                "max_tokens": 100,
+                "temperature": 0.7
+            }
+            
+            # Call LLM API
+            response = requests.post(
+                self.llm_endpoint,
+                json=payload,
+                timeout=5  # 5 second timeout
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                suggestion = result.get('choices', [{}])[0].get('message', {}).get('content', '').strip()
+                return suggestion if suggestion else None
+            else:
+                print(f"⚠️  LLM returned status {response.status_code}")
+                return None
+                
+        except requests.exceptions.Timeout:
+            print("⚠️  LLM request timed out")
+            return None
+        except Exception as e:
+            print(f"⚠️  LLM call failed: {e}")
+            return None
+    
+    def compute_llm_alignment_bonus(self, action: int, llm_suggestion: Optional[str]) -> float:
+        """Compute reward bonus if PPO action aligns with LLM suggestion."""
+        if not llm_suggestion:
+            return 0.0
+        
+        # Map actions to button names
+        action_names = ["NOP", "UP", "DOWN", "LEFT", "RIGHT", "A", "B", "START", "SELECT"]
+        if action >= len(action_names):
+            return 0.0
+        
+        action_name = action_names[action]
+        suggestion_upper = llm_suggestion.upper()
+        
+        # Check if LLM suggested this action
+        if action_name in suggestion_upper or (action_name == "A" and "TALK" in suggestion_upper):
+            return self.alignment_bonus_multiplier
+        
+        return 0.0
+    
     def step(self, action: int) -> Tuple[np.ndarray, float, bool, bool, dict]:
         """
         Execute one step in the environment.
@@ -254,12 +435,45 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         # Call parent step
         obs, reward, terminated, truncated, info = super().step(action)
         
+        # Call Vision LLM for guidance (every N steps)
+        llm_bonus = 0.0
+        if self.llm_enabled and self._step_count % self.llm_frequency == 0:
+            # Get structured game state
+            if hasattr(self, 'state_encoder') and self.state_encoder:
+                game_state = self.state_encoder.get_structured_state(self.bridge)
+            else:
+                game_state = {}
+            
+            # Capture screenshot
+            screenshot = self.capture_screenshot_base64()
+            
+            if screenshot:
+                # Call vision LLM
+                llm_suggestion = self.call_llm_vision(game_state, screenshot)
+                
+                if llm_suggestion:
+                    self.llm_call_count += 1
+                    self.llm_success_count += 1
+                    self.last_llm_suggestion = llm_suggestion
+                    
+                    # Compute alignment bonus
+                    llm_bonus = self.compute_llm_alignment_bonus(action, llm_suggestion)
+                    
+                    if llm_bonus > 0:
+                        print(f"📸 LLM suggested: {llm_suggestion[:50]}... → Action {action} = +{llm_bonus:.1f} bonus!")
+                else:
+                    self.llm_call_count += 1
+            
+            # Add LLM stats to info
+            info['llm_calls'] = self.llm_call_count
+            info['llm_success_rate'] = self.llm_success_count / max(self.llm_call_count, 1)
+        
         # Ensure observation is the correct type
         if not isinstance(obs, np.ndarray):
             obs = np.array(obs, dtype=np.float32)
         
-        # Ensure reward is a float scalar
-        reward = float(reward)
+        # Add LLM alignment bonus to reward
+        reward = float(reward) + llm_bonus
         
         # Update counters and logging
         self._step_count += 1
