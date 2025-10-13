@@ -36,51 +36,30 @@ class ZeldaPyBoyBridge:
             self.pyboy.stop()
 
         # Use new PyBoy v2.x API
-        # Try to initialize without forcing CGB mode
-        # Save state was created in DMG mode, need to match it
-        try:
-            # Try with cgb parameter if available (newer PyBoy versions)
-            self.pyboy = PyBoy(
-                self.rom_path,
-                window="null" if self.headless else "SDL2",
-                debug=False,
-                cgb=False  # Force DMG (original Game Boy) mode
-            )
-        except TypeError:
-            # Fallback for older PyBoy versions without cgb parameter
-            self.pyboy = PyBoy(
-                self.rom_path,
-                window="null" if self.headless else "SDL2",
-                debug=False
-            )
+        # Let PyBoy auto-detect mode from ROM (CGB for .gbc files)
+        self.pyboy = PyBoy(
+            self.rom_path,
+            window="null" if self.headless else "SDL2",
+            debug=False
+            # Note: Removed cgb=False as PyBoy auto-detects from .gbc ROM
+        )
 
-        # Load save state if available and auto_load is enabled
-        if self.auto_load_save_state:
-            try:
-                import os
-                if os.path.exists(self.save_state_path):
-                    print(f"🎮 Loading save state: {self.save_state_path}")
-                    # PyBoy expects a file-like object
-                    with open(self.save_state_path, 'rb') as state_file:
-                        self.pyboy.load_state(state_file)
-                    print("✅ Save state loaded successfully - skipping intro!")
-                else:
-                    print(f"⚠️  Save state not found: {self.save_state_path}")
-                    print("   Running from ROM start (will include intro/cutscenes)")
-                    # Fallback: Skip intro manually if no save state
-                    for _ in range(1000):
-                        self.pyboy.tick()
-            except Exception as e:
-                print(f"❌ Failed to load save state: {e}")
-                print("   Falling back to manual intro skip")
-                # Fallback: Skip intro manually if save state loading fails
-                for _ in range(1000):
-                    self.pyboy.tick()
-        else:
-            # Manual intro skip if auto_load is disabled
-            print("🎮 Auto-load disabled, running from ROM start")
-            for _ in range(1000):
-                self.pyboy.tick()
+        # TEMPORARY FIX: Disable save state loading due to CGB/DMG mode mismatch
+        # The save state was created in DMG mode, but PyBoy auto-loads .gbc ROMs in CGB mode
+        # This causes: "CRITICAL Loading state which is not CGB, but PyBoy is loaded in CGB mode!"
+        # 
+        # TODO: Recreate save state in CGB mode and re-enable this
+        print("🎮 Save state loading temporarily disabled (CGB mode mismatch)")
+        print("   Starting from ROM beginning and skipping intro frames...")
+        
+        # Skip intro/title screens (approximately 2000-3000 frames)
+        # This is slower than save states but avoids the CGB/DMG mismatch
+        for i in range(3000):
+            self.pyboy.tick()
+            if i % 1000 == 0:
+                print(f"   Skipping intro... frame {i}/3000")
+        
+        print("✅ Intro skip complete - game should be at start location")
 
         self.last_action = None
 
