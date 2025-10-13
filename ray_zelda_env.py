@@ -43,6 +43,11 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         """
         config = config if config is not None else {}
         
+        # Initialize step counter for logging
+        self._step_count = 0
+        self._episode_count = 0
+        self._total_reward = 0.0
+        
         # DEBUG: Print environment info
         print("\n" + "="*70)
         print("🔍 DEBUG: ZeldaRayEnv Path Resolution")
@@ -210,12 +215,31 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         Reset the environment.
         Ray RLlib requires the (observation, info) return format.
         """
+        import time
+        start_time = time.time()
+        
+        print(f"\n{'='*70}")
+        print(f"🔄 RESET called on Worker {self.instance_id}")
+        print(f"{'='*70}")
+        
         # Call parent reset
         obs, info = super().reset(seed=seed, options=options)
         
         # Ensure observation is the correct type
         if not isinstance(obs, np.ndarray):
             obs = np.array(obs, dtype=np.float32)
+        
+        # Reset counters
+        self._step_count = 0
+        self._episode_count += 1
+        self._total_reward = 0.0
+        
+        elapsed = time.time() - start_time
+        print(f"✅ RESET complete in {elapsed:.2f}s")
+        print(f"   Episode: {self._episode_count}")
+        print(f"   Observation shape: {obs.shape}")
+        print(f"   Info keys: {list(info.keys())}")
+        print(f"{'='*70}\n")
         
         return obs, info
     
@@ -224,6 +248,9 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         Execute one step in the environment.
         Ray RLlib requires (obs, reward, terminated, truncated, info) return format.
         """
+        import time
+        start_time = time.time()
+        
         # Call parent step
         obs, reward, terminated, truncated, info = super().step(action)
         
@@ -233,6 +260,29 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         
         # Ensure reward is a float scalar
         reward = float(reward)
+        
+        # Update counters and logging
+        self._step_count += 1
+        self._total_reward += reward
+        elapsed = time.time() - start_time
+        
+        # Log every 100 steps or at episode end
+        if self._step_count % 100 == 0 or terminated or truncated:
+            done_str = " [DONE]" if (terminated or truncated) else ""
+            print(f"🎮 Step {self._step_count:4d}: reward={reward:+.2f}, total={self._total_reward:+.1f}, time={elapsed:.3f}s{done_str}")
+            
+            # Extra logging at episode end
+            if terminated or truncated:
+                print(f"\n{'='*70}")
+                print(f"🏁 EPISODE {self._episode_count} COMPLETE")
+                print(f"   Steps: {self._step_count}")
+                print(f"   Total Reward: {self._total_reward:.2f}")
+                print(f"   Avg Reward/Step: {self._total_reward/max(self._step_count,1):.3f}")
+                if 'llm_calls' in info:
+                    print(f"   LLM Calls: {info.get('llm_calls', 0)}")
+                if 'rooms_discovered' in info:
+                    print(f"   Rooms Discovered: {info.get('rooms_discovered', 0)}")
+                print(f"{'='*70}\n")
         
         return obs, reward, terminated, truncated, info
     
