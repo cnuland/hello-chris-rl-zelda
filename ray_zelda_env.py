@@ -115,6 +115,9 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         # Initialize Vision LLM integration if enabled
         self._init_vision_llm()
         
+        # Initialize HUD client for vision updates
+        self._init_hud_client()
+        
         print(f"✅ ZeldaRayEnv initialized (Instance: {self.instance_id})")
         print(f"   ROM: {rom_path}")
         print(f"   Config: {config_path}")
@@ -123,6 +126,8 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         if self.llm_enabled:
             print(f"   🧠 Vision LLM: ENABLED (every {self.llm_frequency} steps)")
             print(f"   📸 Image: {160*self.image_scale}×{144*self.image_scale}, {self.image_quality}% JPEG")
+        if hasattr(self, 'hud_client') and self.hud_client and self.hud_client.enabled:
+            print(f"   🖥️  HUD Client: ENABLED")
     
     def _init_vision_llm(self):
         """Initialize vision LLM integration if enabled in config."""
@@ -198,6 +203,42 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
             print(f"   ❌ Failed to load vision config: {e}")
             print(f"   Vision LLM disabled")
             self.llm_enabled = False
+    
+    def _init_hud_client(self):
+        """Initialize HUD client for sending vision updates."""
+        self.hud_client = None
+        
+        # Only initialize HUD on worker 1, env 0 to avoid multiple sessions
+        if self.instance_id != 1:
+            return
+        
+        try:
+            hud_url = os.environ.get('HUD_URL')
+            if not hud_url:
+                print("   🖥️  HUD: No HUD_URL set")
+                return
+            
+            # Import HUD client
+            import sys
+            from pathlib import Path
+            sys.path.insert(0, str(Path(__file__).parent / 'HUD'))
+            
+            from hud_client import HUDClient
+            
+            self.hud_client = HUDClient(hud_url=hud_url)
+            
+            if self.hud_client.enabled:
+                print(f"   ✅ HUD client initialized for worker {self.instance_id}")
+            else:
+                print(f"   ⚠️  HUD client failed to connect")
+                self.hud_client = None
+                
+        except ImportError as e:
+            print(f"   ⚠️  HUD client not available: {e}")
+            self.hud_client = None
+        except Exception as e:
+            print(f"   ❌ Error initializing HUD client: {e}")
+            self.hud_client = None
     
     @staticmethod
     def _ensure_rom_files(rom_path: str):
@@ -481,7 +522,9 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
             
             if screenshot:
                 # Call vision LLM
+                llm_start_time = time.time()
                 llm_suggestion = self.call_llm_vision(game_state, screenshot)
+                llm_response_time = (time.time() - llm_start_time) * 1000  # Convert to ms
                 
                 if llm_suggestion:
                     self.llm_call_count += 1
@@ -493,6 +536,30 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                     
                     if llm_bonus > 0:
                         print(f"📸 LLM suggested: {llm_suggestion[:50]}... → Action {action} = +{llm_bonus:.1f} bonus!")
+                    
+                    # Send to HUD (same snapshot LLM sees!)
+                    if self.hud_client and self.hud_client.enabled:
+                        try:
+                            # Send vision data (screenshot)
+                            self.hud_client.update_vision_data(screenshot, llm_response_time)
+                            
+                            # Send training data (game state)
+                            hud_training_data = {
+                                'llm_suggestion': llm_suggestion,
+                                'llm_calls': self.llm_call_count,
+                                'llm_success_rate': self.llm_success_count / max(self.llm_call_count, 1),
+                                'alignment_bonus': llm_bonus,
+                                'step': self._step_count,
+                                'episode': self._episode_count,
+                                'location': game_state.get('location', {}).get('name', 'Unknown'),
+                                'room_id': game_state.get('location', {}).get('room', 0),
+                                'health': game_state.get('stats', {}).get('health', 0),
+                                'max_health': game_state.get('stats', {}).get('max_health', 0),
+                            }
+                            self.hud_client.update_training_data(hud_training_data)
+                        except Exception as e:
+                            # Don't crash training if HUD fails
+                            pass
                 else:
                     self.llm_call_count += 1
             
