@@ -42,6 +42,9 @@ class ZeldaHUDCallback(DefaultCallbacks):
     HUD client is initialized lazily on the driver only to avoid session conflicts.
     """
     
+    # Designate which worker can send vision data to HUD
+    HUD_WORKER_INDEX = 1  # Worker 1, Env 0
+    
     def __init__(self):
         super().__init__()
         self.hud_client = None
@@ -56,15 +59,30 @@ class ZeldaHUDCallback(DefaultCallbacks):
         Lazy initialization of HUD client.
         Only called from driver (on_train_result), not from workers.
         """
-        if not self._hud_initialized and HUD_AVAILABLE and self._hud_url:
+        if not self._hud_initialized:
             self._hud_initialized = True
+            
+            if not HUD_AVAILABLE:
+                print("⚠️  HUD: HUD client module not available")
+                return
+            
+            if not self._hud_url:
+                print("⚠️  HUD: HUD_URL not set in environment")
+                return
+            
             try:
+                print(f"🖥️  Initializing HUD client (from driver/callback)...")
+                print(f"   HUD URL: {self._hud_url}")
                 self.hud_client = HUDClient(hud_url=self._hud_url)
                 if not self.hud_client.enabled:
                     print("⚠️  HUD connection failed, dashboard disabled")
                     self.hud_client = None
+                else:
+                    print("✅ HUD callback initialized successfully!")
             except Exception as e:
                 print(f"❌ Failed to initialize HUD client: {e}")
+                import traceback
+                traceback.print_exc()
                 self.hud_client = None
     
     def on_episode_end(
@@ -118,8 +136,17 @@ class ZeldaHUDCallback(DefaultCallbacks):
             training_data['entropy'] = learner_info.get('learner_stats', {}).get('entropy', 0.0)
         
         # Send to HUD
-        self.hud_client.update_training_data(training_data)
+        try:
+            success = self.hud_client.update_training_data(training_data)
+            if success:
+                print(f"📊 HUD updated: iter={training_data['iteration']}, "
+                      f"steps={training_data['timesteps_total']}, "
+                      f"reward={training_data['mean_reward']:.1f}")
+            else:
+                print(f"⚠️  HUD update failed")
+        except Exception as e:
+            print(f"❌ Error sending data to HUD: {e}")
         
-        # TODO: Vision data (screenshots) not yet implemented for Ray distributed training
-        # The environment would need to implement get_screenshot_base64() method
+        # Note: Vision data (screenshots) is sent directly from environments
+        # when LLM is called, not from this callback
 
