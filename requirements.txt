@@ -2,7 +2,7 @@
 
 # Core RL and Gaming
 gymnasium==0.29.1
-pyboy==1.6.9
+pyboy>=2.6.0
 torch==2.1.0
 torchvision==0.16.0
 numpy==1.24.4
