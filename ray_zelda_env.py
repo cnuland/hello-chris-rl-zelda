@@ -462,7 +462,8 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         if self.llm_enabled and self._step_count % self.llm_frequency == 0:
             # Get structured game state
             if hasattr(self, 'state_encoder') and self.state_encoder:
-                game_state = self.state_encoder.get_structured_state(self.bridge)
+                # encode_state returns (vector_obs, structured_state)
+                _, game_state = self.state_encoder.encode_state(self.bridge)
             else:
                 game_state = {}
             
