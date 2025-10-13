@@ -1,6 +1,8 @@
 """
 Ray RLlib Training Script for Zelda Oracle of Seasons
 Uses vector observations + vision LLM (matches existing hybrid approach)
+
+Cache bust: 2025-10-13 02:50 - Force new working_dir for HUD fixes
 """
 
 from pathlib import Path
