@@ -118,14 +118,20 @@ class ZeldaHUDCallback(DefaultCallbacks):
         if not self.hud_client or not self.hud_client.enabled:
             return
         
-        # Extract key metrics
+        # Extract key metrics and map to HUD field names
+        timesteps_total = result.get('timesteps_total', 0)
+        episodes_total = result.get('episodes_total', 0)
+        iteration = result.get('training_iteration', 0)
+        
         training_data = {
-            'timesteps_total': result.get('timesteps_total', 0),
-            'episodes_total': result.get('episodes_total', 0),
-            'mean_reward': result.get('episode_reward_mean', 0.0),
-            'mean_episode_length': result.get('episode_len_mean', 0.0),
+            # HUD expects these exact field names
+            'global_step': timesteps_total,  # renamed from timesteps_total
+            'episode': episodes_total,  # renamed from episodes_total
+            'epoch': iteration,  # use iteration as epoch
+            'episode_reward': result.get('episode_reward_mean', 0.0),  # renamed from mean_reward
+            'episode_length': result.get('episode_len_mean', 0.0),  # renamed from mean_episode_length
             'learning_rate': result.get('info', {}).get('learner', {}).get('default_policy', {}).get('cur_lr', 0.0),
-            'iteration': result.get('training_iteration', 0),
+            'iteration': iteration,  # keep for backward compatibility
         }
         
         # Add policy loss info if available
@@ -139,9 +145,10 @@ class ZeldaHUDCallback(DefaultCallbacks):
         try:
             success = self.hud_client.update_training_data(training_data)
             if success:
-                print(f"📊 HUD updated: iter={training_data['iteration']}, "
-                      f"steps={training_data['timesteps_total']}, "
-                      f"reward={training_data['mean_reward']:.1f}")
+                print(f"📊 HUD updated: epoch={training_data['epoch']}, "
+                      f"steps={training_data['global_step']}, "
+                      f"episodes={training_data['episode']}, "
+                      f"reward={training_data['episode_reward']:.1f}")
             else:
                 print(f"⚠️  HUD update failed")
         except Exception as e:
