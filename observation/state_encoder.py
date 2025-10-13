@@ -452,10 +452,10 @@ class ZeldaStateEncoder:
                     # Get sprite data from OAM
                     oam_addr = 0xFE00 + (sprite_num * 4)
                     
-                    y_pos = pyboy_bridge.pyboy.memory[oam_addr]
-                    x_pos = pyboy_bridge.pyboy.memory[oam_addr + 1]
-                    tile_id = pyboy_bridge.pyboy.memory[oam_addr + 2]
-                    attributes = pyboy_bridge.pyboy.memory[oam_addr + 3]
+                    y_pos = pyboy_bridge.get_memory(oam_addr)
+                    x_pos = pyboy_bridge.get_memory(oam_addr + 1)
+                    tile_id = pyboy_bridge.get_memory(oam_addr + 2)
+                    attributes = pyboy_bridge.get_memory(oam_addr + 3)
                     
                     # Skip empty/off-screen sprites
                     if y_pos == 0 or y_pos >= 160 or x_pos == 0:

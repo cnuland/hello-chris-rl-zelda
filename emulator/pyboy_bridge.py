@@ -125,8 +125,13 @@ class ZeldaPyBoyBridge:
         if not self.pyboy:
             raise RuntimeError("Emulator not initialized")
 
-        # Use new PyBoy v2.x API - direct memory access
-        return self.pyboy.memory[address]
+        # Use PyBoy API - compatible with both old and new versions
+        try:
+            # Try new API first (PyBoy 2.x)
+            return self.pyboy.get_memory_value(address)
+        except AttributeError:
+            # Fall back to old API (PyBoy 1.x)
+            return self.pyboy.memory[address]
 
     def get_memory_range(self, start: int, length: int) -> bytes:
         """Read range of bytes from memory.
