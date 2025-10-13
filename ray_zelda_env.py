@@ -342,6 +342,15 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
             # Convert to PIL Image
             image = Image.fromarray(screen_array)
             
+            # Convert RGBA to RGB (JPEG doesn't support alpha channel)
+            if image.mode == 'RGBA':
+                # Create white background and paste RGBA image on it
+                rgb_image = Image.new('RGB', image.size, (255, 255, 255))
+                rgb_image.paste(image, mask=image.split()[3])  # Use alpha channel as mask
+                image = rgb_image
+            elif image.mode != 'RGB':
+                image = image.convert('RGB')
+            
             # Upscale for better LLM understanding
             if self.image_scale > 1:
                 new_size = (image.width * self.image_scale, image.height * self.image_scale)
