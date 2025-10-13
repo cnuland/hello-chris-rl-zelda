@@ -36,11 +36,23 @@ class ZeldaPyBoyBridge:
             self.pyboy.stop()
 
         # Use new PyBoy v2.x API
-        self.pyboy = PyBoy(
-            self.rom_path,
-            window="null" if self.headless else "SDL2",
-            debug=False
-        )
+        # Try to initialize without forcing CGB mode
+        # Save state was created in DMG mode, need to match it
+        try:
+            # Try with cgb parameter if available (newer PyBoy versions)
+            self.pyboy = PyBoy(
+                self.rom_path,
+                window="null" if self.headless else "SDL2",
+                debug=False,
+                cgb=False  # Force DMG (original Game Boy) mode
+            )
+        except TypeError:
+            # Fallback for older PyBoy versions without cgb parameter
+            self.pyboy = PyBoy(
+                self.rom_path,
+                window="null" if self.headless else "SDL2",
+                debug=False
+            )
 
         # Load save state if available and auto_load is enabled
         if self.auto_load_save_state:
