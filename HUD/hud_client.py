@@ -41,27 +41,55 @@ class HUDClient:
             bool: True if registration successful
         """
         if not self.hud_url:
+            print("⚠️  HUD URL not set, skipping registration")
             return False
         
+        print(f"📡 Attempting HUD registration at: {self.hud_url}/api/register_session")
+        print(f"   Timeout: 10 seconds")
+        
         try:
+            import sys
+            sys.stdout.flush()  # Force output to appear immediately
+            
             response = requests.post(
                 f"{self.hud_url}/api/register_session",
-                timeout=5
+                timeout=10  # Increased timeout
             )
+            
+            print(f"📡 HUD server responded with status: {response.status_code}")
+            sys.stdout.flush()
+            
             if response.status_code == 200:
                 data = response.json()
                 self.session_id = data.get('session_id')
                 self.enabled = True
                 print(f"✅ HUD session registered: {self.session_id[:8]}...")
+                sys.stdout.flush()
                 return True
             elif response.status_code == 409:
                 print(f"⚠️  HUD already in use by another session")
+                sys.stdout.flush()
                 return False
             else:
-                print(f"❌ HUD registration failed: {response.status_code}")
+                print(f"❌ HUD registration failed: {response.status_code} - {response.text}")
+                sys.stdout.flush()
                 return False
+        except requests.exceptions.Timeout as e:
+            print(f"❌ HUD connection TIMEOUT after 10s: {e}")
+            print(f"   Is the HUD server running at {self.hud_url}?")
+            import sys
+            sys.stdout.flush()
+            return False
+        except requests.exceptions.ConnectionError as e:
+            print(f"❌ HUD connection ERROR: {e}")
+            print(f"   Cannot reach HUD server at {self.hud_url}")
+            import sys
+            sys.stdout.flush()
+            return False
         except Exception as e:
-            print(f"❌ Failed to connect to HUD: {e}")
+            print(f"❌ Unexpected error connecting to HUD: {type(e).__name__}: {e}")
+            import sys
+            sys.stdout.flush()
             return False
     
     def update_training_data(self, data: Dict) -> bool:
