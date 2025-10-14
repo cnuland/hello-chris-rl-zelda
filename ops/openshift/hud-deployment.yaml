@@ -19,9 +19,10 @@ spec:
         app: zelda-hud
         component: dashboard
     spec:
+      serviceAccountName: zelda-rl-training
       containers:
       - name: hud-server
-        image: quay.io/cnuland/zelda-hud:latest  # Dedicated HUD image
+        image: quay.io/cnuland/rl-zelda-web-server:latest  # Dedicated HUD image
         imagePullPolicy: Always
         ports:
         - name: http

@@ -69,23 +69,33 @@ fi
 echo "✅ Prerequisites validated"
 echo ""
 
-# Step 2: Deploy HUD Dashboard
-echo "🖥️  Step 2: Deploying HUD Dashboard..."
-oc apply -f ops/openshift/hud-deployment.yaml
+# Step 2: Check HUD Dashboard Status
+echo "🖥️  Step 2: Checking HUD Dashboard status..."
 
-# Wait for HUD to be ready
-echo "⏳ Waiting for HUD pod to be ready..."
-oc wait --for=condition=ready pod -l app=zelda-hud -n zelda-hybrid-rl-llm --timeout=120s
+# Check if HUD is already running
+if oc get pods -n zelda-hybrid-rl-llm -l app=zelda-hud --no-headers 2>/dev/null | grep -q "Running"; then
+    echo "✅ HUD Dashboard is already running!"
+else
+    echo "⚠️  HUD Dashboard not found. Deploying..."
+    oc apply -f ops/openshift/hud-deployment.yaml
+    echo "⏳ Waiting for HUD pod to be ready..."
+    oc wait --for=condition=ready pod -l app=zelda-hud -n zelda-hybrid-rl-llm --timeout=120s
+fi
 
 # Get HUD route URL
 HUD_ROUTE=$(oc get route zelda-hud-route -n zelda-hybrid-rl-llm -o jsonpath='{.spec.host}' 2>/dev/null || echo "")
 if [ -n "$HUD_ROUTE" ]; then
-    HUD_URL="https://$HUD_ROUTE"
-    echo "✅ HUD Dashboard deployed: $HUD_URL"
+    HUD_URL_EXTERNAL="https://$HUD_ROUTE"
+    echo "✅ HUD Dashboard ready!"
+    echo "📊 External Dashboard: $HUD_URL_EXTERNAL"
 else
-    echo "⚠️  HUD route not found, using internal service"
-    HUD_URL="http://zelda-hud-service.zelda-hybrid-rl-llm.svc.cluster.local:8086"
+    echo "⚠️  HUD external route not found"
+    HUD_URL_EXTERNAL="Route not available"
 fi
+
+# Always use internal service URL for training jobs
+HUD_URL="http://zelda-hud-service.zelda-hybrid-rl-llm.svc.cluster.local:8086"
+echo "🔌 Internal Service: $HUD_URL"
 echo ""
 
 # Step 3: Configure production environment variables
@@ -108,7 +118,8 @@ echo ""
 
 # Step 4: Start production training
 echo "🎮 Step 4: Launching production-scale training..."
-echo "🌐 HUD Dashboard: $HUD_URL"
+echo "🌐 External HUD Dashboard: $HUD_URL_EXTERNAL"
+echo "🔌 Internal HUD Service: $HUD_URL"
 echo "📊 Monitor Ray dashboard at cluster details (see output below)"
 echo ""
 
@@ -133,4 +144,5 @@ python run-ray-zelda.py
 echo ""
 echo "✅ PRODUCTION TRAINING COMPLETED!"
 echo "📊 Results saved to: ~/ray_results/zelda/"
-echo "🖥️  HUD Dashboard (if still running): $HUD_URL"
+echo "🖥️  External HUD Dashboard: $HUD_URL_EXTERNAL"
+echo "🔌 Internal HUD Service: $HUD_URL"
