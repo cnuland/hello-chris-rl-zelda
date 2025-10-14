@@ -1,0 +1,18 @@
+# Working LLM Service Endpoints for Ray Job Configuration
+# Use these instead of the inference gateway
+
+# Primary LLM Service (Working)
+LLM_SERVICE_URL: "http://llama4scout-decode.llm-d.svc.cluster.local:8000"
+
+# Alternative LLM Services (Tested and Working)
+LLM_SERVICE_ALTERNATIVES:
+  - "http://llama4scout-decode.llm-d.svc.cluster.local:8000"
+  - "http://llama-test-service.llm-d.svc.cluster.local:8000"
+  - "http://llama4-scout-cpu-service.llm-d.svc.cluster.local:8000"
+
+# DO NOT USE (Currently Broken)
+# - "http://llm-d-infra-inference-gateway-istio.llm-d.svc.cluster.local:80"  # Returns 503
+# - "http://ms-llm-d-modelservice-decode.llm-d.svc.cluster.local:8000"       # No healthy upstreams
+
+# HUD Service (Working)
+HUD_SERVICE_URL: "http://zelda-hud-final.llm-d.svc.cluster.local:8086"

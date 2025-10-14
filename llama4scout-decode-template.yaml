@@ -1,0 +1,158 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    deployment.kubernetes.io/revision: "4"
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{},"labels":{"app":"llama4scout-decode","llm-d.ai/inferenceServing":"true","llm-d.ai/model":"llama4scout","llm-d.ai/role":"decode"},"name":"llama4scout-decode","namespace":"llm-d"},"spec":{"replicas":2,"selector":{"matchLabels":{"app":"llama4scout-decode"}},"template":{"metadata":{"labels":{"app":"llama4scout-decode","llm-d.ai/inferenceServing":"true","llm-d.ai/model":"llama4scout","llm-d.ai/role":"decode"}},"spec":{"containers":[{"args":["--model=meta-llama/Llama-3.2-3B-Instruct","--host=0.0.0.0","--port=8000","--enable-prefix-caching","--block-size=16","--gpu-memory-utilization=0.7","--max-model-len=4096","--disable-log-requests","--kv-cache-dtype=auto","--max-num-seqs=256"],"command":["python","-m","vllm.entrypoints.openai.api_server"],"env":[{"name":"CUDA_VISIBLE_DEVICES","value":"0"},{"name":"HF_TOKEN","valueFrom":{"secretKeyRef":{"key":"HF_TOKEN","name":"llm-d-hf-token","optional":true}}},{"name":"PYTHONHASHSEED","value":"42"},{"name":"VLLM_LOGGING_LEVEL","value":"INFO"},{"name":"HF_HOME","value":"/tmp/huggingface"},{"name":"TRANSFORMERS_CACHE","value":"/tmp/huggingface/transformers"}],"image":"ghcr.io/llm-d/llm-d:v0.2.0","livenessProbe":{"failureThreshold":3,"httpGet":{"path":"/v1/models","port":8000},"initialDelaySeconds":180,"periodSeconds":60,"timeoutSeconds":10},"name":"vllm","ports":[{"containerPort":8000,"protocol":"TCP"}],"readinessProbe":{"failureThreshold":10,"httpGet":{"path":"/v1/models","port":8000},"initialDelaySeconds":120,"periodSeconds":30,"timeoutSeconds":10},"resources":{"limits":{"cpu":"4","memory":"16Gi","nvidia.com/gpu":"1"},"requests":{"cpu":"2","memory":"8Gi","nvidia.com/gpu":"1"}},"volumeMounts":[{"mountPath":"/tmp/huggingface","name":"cache-volume"},{"mountPath":"/dev/shm","name":"shm"}]}],"nodeSelector":{"node-role.kubernetes.io/gpu-inference":""},"serviceAccountName":"llama4scout-pd-sa","tolerations":[{"effect":"NoSchedule","key":"gpu-inference","operator":"Equal","value":"true"},{"effect":"NoSchedule","key":"nvidia.com/gpu","operator":"Exists"}],"volumes":[{"emptyDir":{"sizeLimit":"50Gi"},"name":"cache-volume"},{"emptyDir":{"medium":"Memory","sizeLimit":"1Gi"},"name":"shm"}]}}}}
+  creationTimestamp: "2025-10-11T23:36:04Z"
+  generation: 4
+  labels:
+    app: llama4scout-decode
+    llm-d.ai/inferenceServing: "true"
+    llm-d.ai/model: llama4scout
+    llm-d.ai/role: decode
+  name: llama4scout-decode
+  namespace: llm-d
+  resourceVersion: "8312834"
+  uid: ace13595-99e1-4198-8fe0-b9fbf28cba67
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 2
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: llama4scout-decode
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: llama4scout-decode
+        llm-d.ai/inferenceServing: "true"
+        llm-d.ai/model: llama4scout
+        llm-d.ai/role: decode
+    spec:
+      containers:
+      - args:
+        - --model=meta-llama/Llama-3.2-3B-Instruct
+        - --host=0.0.0.0
+        - --port=8000
+        - --enable-prefix-caching
+        - --block-size=16
+        - --gpu-memory-utilization=0.7
+        - --max-model-len=4096
+        - --disable-log-requests
+        - --kv-cache-dtype=auto
+        - --max-num-seqs=256
+        command:
+        - python
+        - -m
+        - vllm.entrypoints.openai.api_server
+        env:
+        - name: CUDA_VISIBLE_DEVICES
+          value: "0"
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              key: HF_TOKEN
+              name: llm-d-hf-token
+              optional: true
+        - name: PYTHONHASHSEED
+          value: "42"
+        - name: VLLM_LOGGING_LEVEL
+          value: INFO
+        - name: HF_HOME
+          value: /tmp/huggingface
+        - name: TRANSFORMERS_CACHE
+          value: /tmp/huggingface/transformers
+        image: ghcr.io/llm-d/llm-d:v0.2.0
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /v1/models
+            port: 8000
+            scheme: HTTP
+          initialDelaySeconds: 180
+          periodSeconds: 60
+          successThreshold: 1
+          timeoutSeconds: 10
+        name: vllm
+        ports:
+        - containerPort: 8000
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 10
+          httpGet:
+            path: /v1/models
+            port: 8000
+            scheme: HTTP
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          successThreshold: 1
+          timeoutSeconds: 10
+        resources:
+          limits:
+            cpu: "4"
+            memory: 16Gi
+            nvidia.com/gpu: "1"
+          requests:
+            cpu: "2"
+            memory: 8Gi
+            nvidia.com/gpu: "1"
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /tmp/huggingface
+          name: cache-volume
+        - mountPath: /dev/shm
+          name: shm
+      dnsPolicy: ClusterFirst
+      nodeSelector:
+        node-role.kubernetes.io/gpu-inference: ""
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      serviceAccount: llama4scout-pd-sa
+      serviceAccountName: llama4scout-pd-sa
+      terminationGracePeriodSeconds: 30
+      tolerations:
+      - effect: NoSchedule
+        key: gpu-inference
+        operator: Equal
+        value: "true"
+      - effect: NoSchedule
+        key: nvidia.com/gpu
+        operator: Exists
+      volumes:
+      - emptyDir:
+          sizeLimit: 50Gi
+        name: cache-volume
+      - emptyDir:
+          medium: Memory
+          sizeLimit: 1Gi
+        name: shm
+status:
+  availableReplicas: 2
+  conditions:
+  - lastTransitionTime: "2025-10-11T23:48:41Z"
+    lastUpdateTime: "2025-10-11T23:48:41Z"
+    message: Deployment has minimum availability.
+    reason: MinimumReplicasAvailable
+    status: "True"
+    type: Available
+  - lastTransitionTime: "2025-10-11T23:36:04Z"
+    lastUpdateTime: "2025-10-11T23:48:41Z"
+    message: ReplicaSet "llama4scout-decode-58867dd98c" has successfully progressed.
+    reason: NewReplicaSetAvailable
+    status: "True"
+    type: Progressing
+  observedGeneration: 4
+  readyReplicas: 2
+  replicas: 2
+  updatedReplicas: 2

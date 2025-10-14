@@ -1,0 +1,105 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-all-llm-d-traffic
+  namespace: llm-d
+spec:
+  # Apply to all pods in the llm-d namespace
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow all traffic from within the same namespace
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: llm-d
+  # Allow all traffic from any namespace in the cluster
+  - from:
+    - namespaceSelector: {}
+  # Allow all traffic from external sources (for routes)
+  - {}
+  egress:
+  # Allow all outbound traffic
+  - {}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-hud-cluster-access
+  namespace: llm-d
+spec:
+  # Apply specifically to HUD pods
+  podSelector:
+    matchLabels:
+      deployment: zelda-hud-final
+  policyTypes:
+  - Ingress
+  ingress:
+  # Allow access from any namespace
+  - from:
+    - namespaceSelector: {}
+  # Allow access from any pod within cluster
+  - from: []
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-llm-services-cluster-access
+  namespace: llm-d
+spec:
+  # Apply to all LLM inference and serving pods
+  podSelector:
+    matchExpressions:
+    - key: llm-d.ai/inferenceServing
+      operator: In
+      values: ["true"]
+  policyTypes:
+  - Ingress
+  ingress:
+  # Allow access from any namespace
+  - from:
+    - namespaceSelector: {}
+  # Allow access from any pod within cluster
+  - from: []
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-llama-services-cluster-access
+  namespace: llm-d
+spec:
+  # Apply to all llama service pods
+  podSelector:
+    matchExpressions:
+    - key: app
+      operator: In
+      values: ["llama-test", "llama4-scout-cpu", "llama4scout-decode", "llama4scout-loadbalancer", "llama4scout-maximized"]
+  policyTypes:
+  - Ingress
+  ingress:
+  # Allow access from any namespace
+  - from:
+    - namespaceSelector: {}
+  # Allow access from any pod within cluster
+  - from: []
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-inference-gateway-cluster-access
+  namespace: llm-d
+spec:
+  # Apply to inference gateway pods
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: inference-gateway
+  policyTypes:
+  - Ingress
+  ingress:
+  # Allow access from any namespace
+  - from:
+    - namespaceSelector: {}
+  # Allow access from any pod within cluster
+  - from: []

@@ -1,0 +1,46 @@
+spec:
+  template:
+    spec:
+      nodeSelector:
+        node-role.kubernetes.io/gpu-medium: ""
+      affinity: null
+      containers:
+      - name: vllm
+        args:
+        - --model=RedHatAI/Llama-4-Scout-17B-16E-Instruct
+        - --host=0.0.0.0
+        - --port=8000
+        - --enable-prefix-caching
+        - --block-size=16
+        - --gpu-memory-utilization=0.85
+        - --max-model-len=12000
+        - --disable-log-requests
+        - --kv-cache-dtype=auto
+        - --max-num-seqs=128
+        - --tensor-parallel-size=4
+        env:
+        - name: CUDA_VISIBLE_DEVICES
+          value: "0,1,2,3"
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              key: HF_TOKEN
+              name: llm-d-hf-token
+              optional: true
+        - name: PYTHONHASHSEED
+          value: "42"
+        - name: VLLM_LOGGING_LEVEL
+          value: INFO
+        - name: HF_HOME
+          value: /tmp/huggingface
+        - name: TRANSFORMERS_CACHE
+          value: /tmp/huggingface/transformers
+        resources:
+          requests:
+            cpu: "16"
+            memory: 64Gi
+            nvidia.com/gpu: "4"
+          limits:
+            cpu: "32"
+            memory: 128Gi
+            nvidia.com/gpu: "4"

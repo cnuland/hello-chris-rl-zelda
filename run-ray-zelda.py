@@ -23,12 +23,13 @@ from ray_zelda_model import ZeldaMLPModel
 # Register custom model
 ModelCatalog.register_custom_model("zelda_mlp", ZeldaMLPModel)
 
-# Define parallel rollout configuration
-num_rollout_workers = 3
-num_envs_per_worker = 3
+# Define parallel rollout configuration (overridable via env vars)
+# Defaults are conservative; use env vars to maximize cluster utilization
+num_rollout_workers = int(os.getenv("RAY_WORKERS", "3"))
+num_envs_per_worker = int(os.getenv("ENVS_PER_WORKER", "3"))
 
-# Set up session
-ep_length = 2048 * 15  # ~30,000 steps per episode
+# Set up session (episode length overridable via env var)
+ep_length = int(os.getenv("EPISODE_LENGTH", str(2048 * 15)))  # default ~30,000 steps per episode
 sess_path = Path(f'session_{str(uuid.uuid4())[:8]}')
 
 # Environment configuration
@@ -55,6 +56,8 @@ else:
 
 # Configure PPO algorithm
 # Hyperparameters match your existing hybrid vision approach
+# Allow batch size override via env var to scale with cluster size
+batch_size = int(os.getenv("BATCH_SIZE", "4096"))
 config = (
     PPOConfig()
     .environment(env="zelda_env", env_config=env_config)
@@ -80,12 +83,12 @@ config = (
         clip_param=0.2,             # PPO clip parameter
         vf_clip_param=10.0,         # Value function clip
         entropy_coeff=0.01,         # Entropy bonus
-        train_batch_size_per_learner=4096,  # Training batch size per learner
+        train_batch_size_per_learner=batch_size,  # Training batch size per learner
         minibatch_size=512,         # Mini-batch size for SGD
         num_epochs=10,              # Training epochs per update (was num_sgd_iter)
     )
     .resources(
-        num_gpus=0,  # CPU-only training (cluster has no GPUs)
+        num_gpus=0,  # CPU-only training (do not consume LLM GPUs)
     )
 )
 
@@ -95,6 +98,7 @@ print(f"   Env Runners (Workers): {num_rollout_workers}")
 print(f"   Envs per runner: {num_envs_per_worker}")
 print(f"   Total parallel environments: {num_rollout_workers * num_envs_per_worker}")
 print(f"   Episode length: {ep_length}")
+print(f"   Train batch size per learner: {config.to_dict().get('train_batch_size_per_learner', 'N/A')}")
 print("="*60)
 
 tune.run(
