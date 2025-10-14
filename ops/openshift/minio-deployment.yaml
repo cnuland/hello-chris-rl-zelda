@@ -1,0 +1,166 @@
+---
+# MinIO Namespace (optional - can use zelda-hybrid-rl-llm)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: minio-system
+---
+# MinIO Service Account
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: minio
+  namespace: minio-system
+---
+# MinIO PVC for persistent storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: minio-storage
+  namespace: minio-system
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: gp3-csi
+---
+# MinIO Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minio
+  namespace: minio-system
+  labels:
+    app: minio
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: minio
+  template:
+    metadata:
+      labels:
+        app: minio
+    spec:
+      serviceAccountName: minio
+      containers:
+      - name: minio
+        image: quay.io/minio/minio:latest
+        imagePullPolicy: Always
+        command:
+        - /bin/bash
+        - -c
+        args:
+        - minio server /data --console-address :9090
+        env:
+        - name: MINIO_ROOT_USER
+          value: "admin"
+        - name: MINIO_ROOT_PASSWORD
+          value: "zelda-rl-minio-2024"
+        - name: MINIO_REGION_NAME
+          value: "us-east-1"
+        ports:
+        - containerPort: 9000
+          name: api
+        - containerPort: 9090
+          name: console
+        resources:
+          limits:
+            cpu: "2"
+            memory: 4Gi
+          requests:
+            cpu: "1"
+            memory: 2Gi
+        volumeMounts:
+        - name: storage
+          mountPath: /data
+        livenessProbe:
+          httpGet:
+            path: /minio/health/live
+            port: 9000
+          initialDelaySeconds: 30
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /minio/health/ready
+            port: 9000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: storage
+        persistentVolumeClaim:
+          claimName: minio-storage
+---
+# MinIO API Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio-api
+  namespace: minio-system
+  labels:
+    app: minio
+spec:
+  selector:
+    app: minio
+  ports:
+  - name: api
+    port: 9000
+    targetPort: 9000
+    protocol: TCP
+  type: ClusterIP
+---
+# MinIO Console Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio-console
+  namespace: minio-system
+  labels:
+    app: minio
+spec:
+  selector:
+    app: minio
+  ports:
+  - name: console
+    port: 9090
+    targetPort: 9090
+    protocol: TCP
+  type: ClusterIP
+---
+# MinIO API Route (for S3 operations)
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: minio-api-route
+  namespace: minio-system
+  labels:
+    app: minio
+spec:
+  to:
+    kind: Service
+    name: minio-api
+  port:
+    targetPort: api
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+---
+# MinIO Console Route (for web UI)
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: minio-console-route
+  namespace: minio-system
+  labels:
+    app: minio
+spec:
+  to:
+    kind: Service
+    name: minio-console
+  port:
+    targetPort: console
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
