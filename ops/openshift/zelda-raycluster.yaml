@@ -1,0 +1,75 @@
+apiVersion: ray.io/v1
+kind: RayCluster
+metadata:
+  name: zelda-rl
+  namespace: zelda-hybrid-rl-llm
+  labels:
+    kueue.x-k8s.io/queue-name: zelda-ray-queue
+spec:
+  rayVersion: '2.9.0'
+  enableInTreeAutoscaling: false
+  headGroupSpec:
+    rayStartParams: {}
+    template:
+      spec:
+        serviceAccountName: zelda-rl-training
+        containers:
+        - name: ray-head
+          image: quay.io/cnuland/dd-kuberay-worker:latest
+          imagePullPolicy: Always
+          resources:
+            limits:
+              cpu: "4"
+              memory: 16Gi
+            requests:
+              cpu: "2"
+              memory: 8Gi
+          ports:
+          - containerPort: 6379
+            name: gcs-server
+          - containerPort: 8265
+            name: dashboard
+          - containerPort: 10001
+            name: client
+          env:
+          - name: RAY_WORKERS
+            value: "84"
+          - name: ENVS_PER_WORKER  
+            value: "12"
+          - name: EPISODE_LENGTH
+            value: "61440"
+          - name: BATCH_SIZE
+            value: "32768"
+          - name: HUD_URL
+            value: "http://zelda-hud-service.zelda-hybrid-rl-llm.svc.cluster.local:8086"
+  workerGroupSpecs:
+  - replicas: 3
+    minReplicas: 1
+    maxReplicas: 6
+    groupName: high-performance-workers
+    rayStartParams: {}
+    template:
+      spec:
+        serviceAccountName: zelda-rl-training
+        containers:
+        - name: ray-worker
+          image: quay.io/cnuland/dd-kuberay-worker:latest
+          imagePullPolicy: Always
+          resources:
+            limits:
+              cpu: "4"
+              memory: 16Gi
+            requests:
+              cpu: "2"
+              memory: 8Gi
+          env:
+          - name: RAY_WORKERS
+            value: "84"
+          - name: ENVS_PER_WORKER
+            value: "12"
+          - name: EPISODE_LENGTH
+            value: "61440"
+          - name: BATCH_SIZE
+            value: "32768"
+          - name: HUD_URL
+            value: "http://zelda-hud-service.zelda-hybrid-rl-llm.svc.cluster.local:8086"
