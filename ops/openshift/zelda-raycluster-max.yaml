@@ -33,13 +33,13 @@ spec:
             name: client
           env:
           - name: RAY_WORKERS
-            value: "84"
+            value: "150"
           - name: ENVS_PER_WORKER  
-            value: "12"
+            value: "20"
           - name: EPISODE_LENGTH
             value: "61440"
           - name: BATCH_SIZE
-            value: "32768"
+            value: "65536"
           - name: HUD_URL
             value: "http://zelda-hud-service.zelda-hybrid-rl-llm.svc.cluster.local:8086"
   workerGroupSpecs:
@@ -64,15 +64,12 @@ spec:
               memory: 100Gi
           env:
           - name: RAY_WORKERS
-            value: "150"  # Maximize parallel environments
+            value: "150"
           - name: ENVS_PER_WORKER
-            value: "20"   # 20 envs per worker
+            value: "20"
           - name: EPISODE_LENGTH
             value: "61440"
           - name: BATCH_SIZE
-            value: "65536"  # Large batch for distributed training
-"
-          - name: BATCH_SIZE
-            value: "65536"  # Large batch for distributed training
+            value: "65536"
           - name: HUD_URL
             value: "http://zelda-hud-service.zelda-hybrid-rl-llm.svc.cluster.local:8086"

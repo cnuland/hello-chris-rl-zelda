@@ -19,11 +19,11 @@ spec:
           imagePullPolicy: Always
           resources:
             limits:
-              cpu: "32"
-              memory: 64Gi
-            requests:
-              cpu: "16"
+              cpu: "8"
               memory: 32Gi
+            requests:
+              cpu: "4"
+              memory: 16Gi
           ports:
           - containerPort: 6379
             name: gcs-server
@@ -33,7 +33,7 @@ spec:
             name: client
           env:
           - name: RAY_WORKERS
-            value: "84"
+            value: "24"
           - name: ENVS_PER_WORKER  
             value: "12"
           - name: EPISODE_LENGTH
@@ -57,22 +57,19 @@ spec:
           imagePullPolicy: Always
           resources:
             limits:
-              cpu: "60"
-              memory: 120Gi
+              cpu: "8"
+              memory: 32Gi
             requests:
-              cpu: "50"
-              memory: 100Gi
+              cpu: "6"
+              memory: 24Gi
           env:
           - name: RAY_WORKERS
-            value: "150"  # Maximize parallel environments
+            value: "24"
           - name: ENVS_PER_WORKER
-            value: "20"   # 20 envs per worker
+            value: "12"
           - name: EPISODE_LENGTH
             value: "61440"
           - name: BATCH_SIZE
-            value: "65536"  # Large batch for distributed training
-"
-          - name: BATCH_SIZE
-            value: "65536"  # Large batch for distributed training
+            value: "32768"
           - name: HUD_URL
             value: "http://zelda-hud-service.zelda-hybrid-rl-llm.svc.cluster.local:8086"

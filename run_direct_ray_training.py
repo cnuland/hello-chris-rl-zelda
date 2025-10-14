@@ -11,10 +11,12 @@ from pathlib import Path
 
 def main():
     # Set environment variables for production scaling
-    os.environ['RAY_WORKERS'] = '36'  # 3 workers * 12 envs each
-    os.environ['ENVS_PER_WORKER'] = '12'
+    # Optimized Ray cluster: 22 CPUs total (1 head @ 4 CPU + 3 workers @ 6 CPU each)
+    # Scale to maximize parallel environments
+    os.environ['RAY_WORKERS'] = '18'  # 18 env runners (within CPU limits)
+    os.environ['ENVS_PER_WORKER'] = '12'  # 12 envs per runner
     os.environ['EPISODE_LENGTH'] = '61440' 
-    os.environ['BATCH_SIZE'] = '16384'  # Scaled for 3 workers
+    os.environ['BATCH_SIZE'] = '16384'  # Large batch for distributed training
     os.environ['HUD_URL'] = 'http://zelda-hud-service.zelda-hybrid-rl-llm.svc.cluster.local:8086'
     
     print("🎮 DIRECT RAY ZELDA TRAINING")

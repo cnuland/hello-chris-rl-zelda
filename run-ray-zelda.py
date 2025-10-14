@@ -24,9 +24,9 @@ from ray_zelda_model import ZeldaMLPModel
 ModelCatalog.register_custom_model("zelda_mlp", ZeldaMLPModel)
 
 # Define parallel rollout configuration (overridable via env vars)
-# Defaults are conservative; use env vars to maximize cluster utilization
-num_rollout_workers = int(os.getenv("RAY_WORKERS", "3"))
-num_envs_per_worker = int(os.getenv("ENVS_PER_WORKER", "3"))
+# Defaults match Ray cluster capacity (8 CPUs total)
+num_rollout_workers = int(os.getenv("RAY_WORKERS", "6"))
+num_envs_per_worker = int(os.getenv("ENVS_PER_WORKER", "6"))
 
 # Set up session (episode length overridable via env var)
 ep_length = int(os.getenv("EPISODE_LENGTH", str(2048 * 15)))  # default ~30,000 steps per episode
