@@ -1,0 +1,7 @@
+apiVersion: kueue.x-k8s.io/v1beta1
+kind: LocalQueue
+metadata:
+  name: zelda-ray-queue
+  namespace: zelda-hybrid-rl-llm
+spec:
+  clusterQueue: ray-cluster-queue
