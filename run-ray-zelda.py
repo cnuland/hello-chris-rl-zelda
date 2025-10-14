@@ -2,7 +2,7 @@
 Ray RLlib Training Script for Zelda Oracle of Seasons
 Uses vector observations + vision LLM (matches existing hybrid approach)
 
-Cache bust: 2025-10-13 03:25 - Fix HUD: correct field name mapping
+Cache bust: 2025-10-14 22:40 - Disable checkpointing (local storage issue)
 """
 
 from pathlib import Path
@@ -105,8 +105,9 @@ tune.run(
     "PPO",
     name="PPO_ZeldaOracleSeasons",
     stop={"timesteps_total": ep_length * 10000},  # 300M timesteps total
-    checkpoint_freq=10,  # Checkpoint every 10 iterations
-    storage_path=str(Path("~/ray_results/zelda").expanduser()),
+    checkpoint_freq=0,  # Disable checkpointing (local storage not accessible on workers)
+    # TODO: Enable S3 checkpointing for production:
+    # storage_path="s3://your-bucket/zelda-checkpoints",
     config=config.to_dict()
 )
 
