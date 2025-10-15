@@ -144,13 +144,19 @@ class HUDClient:
             return False
         
         try:
+            # Build payload - only include response_time if it's a real LLM call
+            payload = {
+                'session_id': self.session_id,
+                'image_base64': image_base64,
+            }
+            
+            # Only include response_time for actual LLM calls (not streaming)
+            if response_time is not None:
+                payload['response_time'] = response_time
+            
             response = requests.post(
                 f"{self.hud_url}/api/update_vision",
-                json={
-                    'session_id': self.session_id,
-                    'image_base64': image_base64,
-                    'response_time': response_time
-                },
+                json=payload,
                 timeout=2
             )
             

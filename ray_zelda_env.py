@@ -885,8 +885,8 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                             else:
                                 game_state = {}
                             
-                            # Send vision data (screenshot only, no LLM response time)
-                            vision_success = self.hud_client.update_vision_data(screenshot, 0)
+                            # Send vision data (screenshot only, no LLM response time for streaming)
+                            vision_success = self.hud_client.update_vision_data(screenshot, None)
                             
                             # Send training data (game state)
                             player_data = game_state.get('player', {})
