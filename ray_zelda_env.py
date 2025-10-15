@@ -54,6 +54,18 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         self._episode_count = 0
         self._total_reward = 0.0
         
+        # Initialize exploration tracking
+        self.rooms_discovered = set()
+        self.grid_areas_explored = set()
+        self.buildings_entered = set()
+        
+        # Initialize milestone tracking
+        self.milestones = {
+            'maku_tree_entered': False,
+            'dungeon_entered': False,
+            'sword_usage': 0
+        }
+        
         # DEBUG: Print environment info
         print("\n" + "="*70)
         print("🔍 DEBUG: ZeldaRayEnv Path Resolution")
@@ -805,6 +817,15 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                         player_data = game_state.get('player', {})
                         room_id = player_data.get('room', 0)
                         
+                        # Track exploration
+                        self.rooms_discovered.add(room_id)
+                        grid_x = (room_id % 16) // 4
+                        grid_y = (room_id // 16) // 4
+                        grid_area = grid_y * 4 + grid_x
+                        self.grid_areas_explored.add(grid_area)
+                        if 0x30 <= room_id <= 0x5F:
+                            self.buildings_entered.add(room_id)
+                        
                         # Get room name
                         location_name = 'Unknown'
                         try:
@@ -812,6 +833,14 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                             location_name = OVERWORLD_ROOMS.get(room_id, f'Room {room_id}')
                         except:
                             location_name = f'Room {room_id}'
+                        
+                        # Update milestones
+                        if 'Maku' in location_name and not self.milestones['maku_tree_entered']:
+                            self.milestones['maku_tree_entered'] = True
+                            print(f"🌳 MILESTONE: Maku Tree Entered!")
+                        if 0x50 <= room_id <= 0x5F and not self.milestones['dungeon_entered']:
+                            self.milestones['dungeon_entered'] = True
+                            print(f"🏰 MILESTONE: Dungeon Entered!")
                         
                         # Extract entity counts
                         entities_data = game_state.get('entities', {})
@@ -852,6 +881,16 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                             'llm_calls': self.llm_call_count,
                             'llm_success_rate': self.llm_success_count / max(self.llm_call_count, 1),
                             'alignment_bonus': llm_bonus,
+                            
+                            # Exploration Statistics
+                            'exploration': {
+                                'rooms_discovered': len(self.rooms_discovered),
+                                'grid_areas': len(self.grid_areas_explored),
+                                'buildings_entered': len(self.buildings_entered)
+                            },
+                            
+                            # Milestones
+                            'milestones': self.milestones.copy()
                         }
                         print(f"   📊 Sending training data: step={self._step_count}, episode={self._episode_count}, location={location_name}...")
                         training_success = self.hud_client.update_training_data(hud_training_data)
@@ -896,6 +935,20 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                         if self._step_count % 100 == 0:
                             print(f"🔍 Position debug (step {self._step_count}): x={player_data.get('x', 'MISSING')}, y={player_data.get('y', 'MISSING')}, room={room_id}")
                         
+                        # Track exploration (rooms, grid areas, buildings)
+                        self.rooms_discovered.add(room_id)
+                        
+                        # Grid area (divide 256 rooms into 16x16 grid -> 16 areas of 4x4 rooms)
+                        grid_x = (room_id % 16) // 4
+                        grid_y = (room_id // 16) // 4
+                        grid_area = grid_y * 4 + grid_x
+                        self.grid_areas_explored.add(grid_area)
+                        
+                        # Check for buildings/special locations (dungeons, shops, houses)
+                        # Rooms 0x50-0x5F are typically dungeons, 0x30-0x3F shops/houses
+                        if 0x30 <= room_id <= 0x5F:
+                            self.buildings_entered.add(room_id)
+                        
                         # Get room name
                         location_name = 'Unknown'
                         try:
@@ -904,11 +957,26 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                         except:
                             location_name = f'Room {room_id}'
                         
+                        # Update milestones
+                        if 'Maku' in location_name and not self.milestones['maku_tree_entered']:
+                            self.milestones['maku_tree_entered'] = True
+                            print(f"🌳 MILESTONE: Maku Tree Entered!")
+                        
+                        if 0x50 <= room_id <= 0x5F and not self.milestones['dungeon_entered']:
+                            self.milestones['dungeon_entered'] = True
+                            print(f"🏰 MILESTONE: Dungeon Entered!")
+                        
                         # Extract entity counts
                         entities_data = game_state.get('entities', {})
                         npc_count = len(entities_data.get('npcs', []))
                         enemy_count = len(entities_data.get('enemies', []))
                         item_count = len(entities_data.get('items', []))
+                        
+                        # Debug: Log entity detection every 100 steps
+                        if self._step_count % 100 == 0:
+                            print(f"👾 Entity debug (step {self._step_count}): NPCs={npc_count}, Enemies={enemy_count}, Items={item_count}")
+                            if entities_data:
+                                print(f"   Raw entities data: {entities_data.keys()}")
                         
                         # Format data for HUD (minimal update, preserve LLM data)
                         hud_training_data = {
@@ -931,6 +999,12 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                                 'enemies': enemy_count,
                                 'items': item_count
                             },
+                            'exploration': {
+                                'rooms_discovered': len(self.rooms_discovered),
+                                'grid_areas': len(self.grid_areas_explored),
+                                'buildings_entered': len(self.buildings_entered)
+                            },
+                            'milestones': self.milestones.copy()
                         }
                         
                         training_success = self.hud_client.update_training_data(hud_training_data)
