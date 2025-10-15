@@ -57,7 +57,7 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         # DEBUG: Print environment info
         print("\n" + "="*70)
         print("🔍 DEBUG: ZeldaRayEnv Path Resolution")
-        print("🆕 CODE VERSION: 2025-10-15-05:30 [ALL game_state KEYS FIXED]")
+        print("🆕 CODE VERSION: 2025-10-15-06:00 [HUD: All workers try to register]")
         print("="*70)
         print(f"CWD: {Path.cwd()}")
         print(f"__file__: {__file__ if '__file__' in globals() else 'N/A'}")
@@ -113,32 +113,36 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         self.ray_config = config
         
         # Get worker ID from Ray context (for distributed training)
-        # Use a global flag to ensure only ONE environment sends HUD data
+        # Simplified approach: Let HUD registration determine which worker sends data
         try:
             import ray
             if ray.is_initialized():
-                # Get worker and vector index from Ray RLlib
-                # worker_index: 0=driver/local, 1+=remote workers
-                # vector_index: 0..N-1 for N envs per worker
+                # Get worker info from Ray
                 runtime_context = ray.get_runtime_context()
+                worker_id = runtime_context.get_worker_id()
                 
-                # Try to get worker and vector indices from config (set by RLlib)
-                worker_index = config.get('worker_index', 0)
-                vector_index = config.get('vector_index', 0)
+                # Generate a unique instance ID from worker ID
+                import hashlib
+                if worker_id:
+                    # Hash to get consistent ID
+                    id_hash = hashlib.md5(worker_id.encode() if isinstance(worker_id, str) else worker_id).hexdigest()
+                    self.instance_id = int(id_hash[:8], 16) % 10000
+                else:
+                    self.instance_id = 0
                 
-                # Designate worker 1, env 0 to send HUD data
-                self.is_hud_designated = (worker_index == 1 and vector_index == 0)
-                self.instance_id = worker_index * 1000 + vector_index  # Unique ID
+                # Don't pre-designate - let HUD client registration decide
+                # The first worker to successfully register will send data
+                self.is_hud_designated = True  # All workers try, HUD server picks one
                 
-                print(f"   🔍 Worker {worker_index}, Vec {vector_index} → instance_id={self.instance_id}, HUD={'✅' if self.is_hud_designated else '❌'}")
+                print(f"   🔍 Worker ID: {worker_id}, Instance: {self.instance_id}")
             else:
                 self.instance_id = 0
-                self.is_hud_designated = False
-                print(f"   🔍 Ray not initialized, HUD disabled")
+                self.is_hud_designated = True
+                print(f"   🔍 Ray not initialized, but will try HUD")
         except Exception as e:
             self.instance_id = 0
-            self.is_hud_designated = False
-            print(f"   ⚠️  Could not get Ray context: {e}")
+            self.is_hud_designated = True
+            print(f"   ⚠️  Could not get Ray context: {e}, but will try HUD")
         
         # Initialize Vision LLM integration if enabled
         self._init_vision_llm()
@@ -251,11 +255,9 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         """Initialize HUD client for sending vision updates."""
         self.hud_client = None
         
-        # Only initialize HUD on designated worker/env to avoid multiple sessions
-        if not hasattr(self, 'is_hud_designated') or not self.is_hud_designated:
-            return  # Silently skip - already logged in __init__
-        
-        print(f"   🎯 This is the designated HUD environment! Initializing HUD client...")
+        # All workers try to initialize HUD client
+        # HUD server's session management will pick the first one
+        print(f"   🖥️  Attempting HUD client initialization (instance {self.instance_id})...")
         
         try:
             hud_url = os.environ.get('HUD_URL')
