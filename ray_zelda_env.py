@@ -110,7 +110,34 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         
         # Store Ray-specific config
         self.ray_config = config
-        self.instance_id = config.get('worker_index', 0)
+        
+        # Get worker ID from Ray context (for distributed training)
+        # Use a global flag to ensure only ONE environment sends HUD data
+        try:
+            import ray
+            if ray.is_initialized():
+                # Get worker and vector index from Ray RLlib
+                # worker_index: 0=driver/local, 1+=remote workers
+                # vector_index: 0..N-1 for N envs per worker
+                runtime_context = ray.get_runtime_context()
+                
+                # Try to get worker and vector indices from config (set by RLlib)
+                worker_index = config.get('worker_index', 0)
+                vector_index = config.get('vector_index', 0)
+                
+                # Designate worker 1, env 0 to send HUD data
+                self.is_hud_designated = (worker_index == 1 and vector_index == 0)
+                self.instance_id = worker_index * 1000 + vector_index  # Unique ID
+                
+                print(f"   🔍 Worker {worker_index}, Vec {vector_index} → instance_id={self.instance_id}, HUD={'✅' if self.is_hud_designated else '❌'}")
+            else:
+                self.instance_id = 0
+                self.is_hud_designated = False
+                print(f"   🔍 Ray not initialized, HUD disabled")
+        except Exception as e:
+            self.instance_id = 0
+            self.is_hud_designated = False
+            print(f"   ⚠️  Could not get Ray context: {e}")
         
         # Initialize Vision LLM integration if enabled
         self._init_vision_llm()
@@ -223,14 +250,11 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         """Initialize HUD client for sending vision updates."""
         self.hud_client = None
         
-        print(f"   🖥️  HUD init check: instance_id={self.instance_id}")
+        # Only initialize HUD on designated worker/env to avoid multiple sessions
+        if not hasattr(self, 'is_hud_designated') or not self.is_hud_designated:
+            return  # Silently skip - already logged in __init__
         
-        # Only initialize HUD on worker 1, env 0 to avoid multiple sessions
-        if self.instance_id != 1:
-            print(f"   ⏭️  Skipping HUD init (instance_id={self.instance_id}, need 1)")
-            return
-        
-        print(f"   🎯 This is worker 1! Initializing HUD client...")
+        print(f"   🎯 This is the designated HUD environment! Initializing HUD client...")
         
         try:
             hud_url = os.environ.get('HUD_URL')
