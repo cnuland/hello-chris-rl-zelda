@@ -57,7 +57,7 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         # DEBUG: Print environment info
         print("\n" + "="*70)
         print("🔍 DEBUG: ZeldaRayEnv Path Resolution")
-        print("🆕 CODE VERSION: 2025-10-15-06:30 [Session Manager: Save episodes to S3]")
+        print("🆕 CODE VERSION: 2025-10-15-06:45 [DEBUG: HUD sending logic]")
         print("="*70)
         print(f"CWD: {Path.cwd()}")
         print(f"__file__: {__file__ if '__file__' in globals() else 'N/A'}")
@@ -745,9 +745,12 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                     
                     # Send to HUD (same snapshot LLM sees!)
                     if self.hud_client and self.hud_client.enabled:
+                        print(f"📤 Sending data to HUD (worker {self.instance_id})...")
                         try:
                             # Send vision data (screenshot)
-                            self.hud_client.update_vision_data(screenshot, llm_response_time)
+                            print(f"   📸 Sending screenshot ({len(screenshot)} chars)...")
+                            vision_success = self.hud_client.update_vision_data(screenshot, llm_response_time)
+                            print(f"   📸 Vision data sent: {vision_success}")
                             
                             # Send training data (game state)
                             # Extract data from correct keys (no 'location' key exists!)
@@ -775,10 +778,17 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                                 'health': player_data.get('health', 0),
                                 'max_health': player_data.get('max_health', 0),
                             }
-                            self.hud_client.update_training_data(hud_training_data)
+                            print(f"   📊 Sending training data: step={self._step_count}, episode={self._episode_count}, location={location_name}...")
+                            training_success = self.hud_client.update_training_data(hud_training_data)
+                            print(f"   📊 Training data sent: {training_success}")
+                            print(f"✅ HUD update complete!")
                         except Exception as e:
                             # Don't crash training if HUD fails
-                            pass
+                            print(f"❌ HUD update failed: {type(e).__name__}: {e}")
+                            import traceback
+                            traceback.print_exc()
+                    else:
+                        print(f"⚠️  HUD client not available: client={self.hud_client}, enabled={getattr(self.hud_client, 'enabled', False) if self.hud_client else False}")
                 else:
                     self.llm_call_count += 1
             
