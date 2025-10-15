@@ -1,16 +1,13 @@
 """
 HUD Client for distributed training environments
 Sends updates to remote HUD server via HTTP requests
-Uses threading for non-blocking async updates
+Optimized with connection pooling for speed
 """
 
 import os
 import requests
 import json
-import threading
 from typing import Optional, Dict
-from concurrent.futures import ThreadPoolExecutor
-from queue import Queue, Empty
 
 
 class HUDClient:
@@ -33,16 +30,11 @@ class HUDClient:
         self.retry_counter = 0  # Track failed registration attempts
         self.retry_delay = 10   # Wait 10 resets before retrying after 409
         
-        # Threading support for non-blocking updates
-        self.executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="hud_client")
-        self.update_in_progress = False
-        self.update_lock = threading.Lock()
-        
-        # Connection pooling for faster HTTP requests
+        # Connection pooling for faster HTTP requests (keep persistent connections)
         self.session = requests.Session()
         adapter = requests.adapters.HTTPAdapter(
-            pool_connections=2,
-            pool_maxsize=2,
+            pool_connections=1,
+            pool_maxsize=1,
             max_retries=0  # Don't retry, just drop if fails
         )
         self.session.mount('http://', adapter)
@@ -125,8 +117,19 @@ class HUDClient:
             sys.stdout.flush()
             return False
     
-    def _send_training_data(self, data: Dict) -> bool:
-        """Internal method to actually send training data (runs in thread)."""
+    def update_training_data(self, data: Dict) -> bool:
+        """
+        Update training metrics on the HUD (fast, simple).
+        
+        Args:
+            data: Dictionary containing training metrics
+            
+        Returns:
+            bool: True if update successful
+        """
+        if not self.enabled or not self.session_id:
+            return False
+        
         try:
             response = self.session.post(
                 f"{self.hud_url}/api/update_training",
@@ -134,40 +137,26 @@ class HUDClient:
                     'session_id': self.session_id,
                     'data': data
                 },
-                timeout=1  # Fast timeout for non-blocking
+                timeout=0.5  # Ultra-fast timeout
             )
             return response.status_code == 200
         except Exception:
-            return False
-        finally:
-            with self.update_lock:
-                self.update_in_progress = False
+            return False  # Fail silently
     
-    def update_training_data(self, data: Dict) -> bool:
+    def update_vision_data(self, image_base64: str, response_time: Optional[float] = None) -> bool:
         """
-        Update training metrics on the HUD (async, non-blocking).
+        Update vision image on the HUD (fast, simple).
         
         Args:
-            data: Dictionary containing training metrics
+            image_base64: Base64 encoded image
+            response_time: LLM response time in milliseconds
             
         Returns:
-            bool: True if update queued successfully
+            bool: True if update successful
         """
         if not self.enabled or not self.session_id:
             return False
         
-        # Skip if previous update still in progress (drop frame)
-        with self.update_lock:
-            if self.update_in_progress:
-                return False  # Drop this update, don't block
-            self.update_in_progress = True
-        
-        # Send in background thread
-        self.executor.submit(self._send_training_data, data)
-        return True
-    
-    def _send_vision_data(self, image_base64: str, response_time: Optional[float]) -> bool:
-        """Internal method to actually send vision data (runs in thread)."""
         try:
             payload = {
                 'session_id': self.session_id,
@@ -179,43 +168,15 @@ class HUDClient:
             response = self.session.post(
                 f"{self.hud_url}/api/update_vision",
                 json=payload,
-                timeout=1  # Fast timeout for non-blocking
+                timeout=0.5  # Ultra-fast timeout
             )
             return response.status_code == 200
         except Exception:
-            return False
-        finally:
-            with self.update_lock:
-                self.update_in_progress = False
-    
-    def update_vision_data(self, image_base64: str, response_time: Optional[float] = None) -> bool:
-        """
-        Update vision image on the HUD (async, non-blocking).
-        
-        Args:
-            image_base64: Base64 encoded JPEG image
-            response_time: LLM response time in milliseconds
-            
-        Returns:
-            bool: True if update queued successfully
-        """
-        if not self.enabled or not self.session_id:
-            return False
-        
-        # Skip if previous update still in progress (drop frame)
-        with self.update_lock:
-            if self.update_in_progress:
-                return False  # Drop this update, don't block
-            self.update_in_progress = True
-        
-        # Send in background thread
-        self.executor.submit(self._send_vision_data, image_base64, response_time)
-        return True
+            return False  # Fail silently
     
     def close(self):
         """Close the session and cleanup resources"""
         self.enabled = False
         self.session_id = None
-        self.executor.shutdown(wait=False)  # Don't wait for pending updates
         self.session.close()
 
