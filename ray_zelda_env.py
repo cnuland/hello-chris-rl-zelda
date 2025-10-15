@@ -728,6 +728,11 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
             screenshot = self.capture_screenshot_base64()
             
             if screenshot:
+                # Initialize LLM result variables (in case LLM fails)
+                llm_action = self.last_llm_suggestion or 'N/A'  # Use last successful suggestion
+                scene_desc = 'LLM unavailable'
+                llm_bonus = 0.0
+                
                 # Call vision LLM
                 llm_start_time = time.time()
                 llm_result = self.call_llm_vision(game_state, screenshot)
@@ -752,82 +757,82 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                     
                     if llm_bonus > 0:
                         print(f"✅ PPO action {action} MATCHES LLM → +{llm_bonus:.1f} bonus!")
-                    
-                    # Send to HUD (same snapshot LLM sees!)
-                    if self.hud_client and self.hud_client.enabled:
-                        print(f"📤 Sending data to HUD (worker {self.instance_id})...")
-                        try:
-                            # Send vision data (screenshot)
-                            print(f"   📸 Sending screenshot ({len(screenshot)} chars)...")
-                            vision_success = self.hud_client.update_vision_data(screenshot, llm_response_time)
-                            print(f"   📸 Vision data sent: {vision_success}")
-                            
-                            # Send training data (game state)
-                            # Extract data from correct keys (no 'location' key exists!)
-                            player_data = game_state.get('player', {})
-                            room_id = player_data.get('room', 0)
-                            
-                            # Get room name
-                            location_name = 'Unknown'
-                            try:
-                                from observation.ram_maps.room_mappings import OVERWORLD_ROOMS
-                                location_name = OVERWORLD_ROOMS.get(room_id, f'Room {room_id}')
-                            except:
-                                location_name = f'Room {room_id}'
-                            
-                            # Extract entity counts
-                            entities_data = game_state.get('entities', {})
-                            npc_count = len(entities_data.get('npcs', []))
-                            enemy_count = len(entities_data.get('enemies', []))
-                            item_count = len(entities_data.get('items', []))
-                            
-                            # Format data to match HUD JavaScript expectations
-                            hud_training_data = {
-                                # Training Progress
-                                'global_step': self._step_count,  # HUD expects 'global_step' not 'step'
-                                'episode': self._episode_count,
-                                'episode_id': f"E{self.instance_id:04d}-{self._episode_count:04d}",  # Format: E0001-0005
-                                'epoch': 0,  # TODO: Get from Ray result
-                                'episode_reward': self._total_reward,
-                                'episode_length': self._step_count,
-                                
-                                # Game State (with correct object formats)
-                                'location': location_name,
-                                'room_id': room_id,
-                                'position': {  # HUD expects {x, y} object
-                                    'x': player_data.get('x', 0),
-                                    'y': player_data.get('y', 0)
-                                },
-                                'health': {  # HUD expects {current, max} object
-                                    'current': player_data.get('health', 0),
-                                    'max': player_data.get('max_health', 0)
-                                },
-                                'entities': {  # HUD expects {npcs, enemies, items} object
-                                    'npcs': npc_count,
-                                    'enemies': enemy_count,
-                                    'items': item_count
-                                },
-                                
-                                # LLM Guidance
-                                'llm_suggestion': llm_action,
-                                'llm_scene_description': scene_desc,
-                                'llm_calls': self.llm_call_count,
-                                'llm_success_rate': self.llm_success_count / max(self.llm_call_count, 1),
-                                'alignment_bonus': llm_bonus,
-                            }
-                            print(f"   📊 Sending training data: step={self._step_count}, episode={self._episode_count}, location={location_name}...")
-                            training_success = self.hud_client.update_training_data(hud_training_data)
-                            print(f"   📊 Training data sent: {training_success}")
-                            print(f"✅ HUD update complete!")
-                        except Exception as e:
-                            # Don't crash training if HUD fails
-                            print(f"❌ HUD update failed: {type(e).__name__}: {e}")
-                            import traceback
-                            traceback.print_exc()
-                    else:
-                        print(f"⚠️  HUD client not available: client={self.hud_client}, enabled={getattr(self.hud_client, 'enabled', False) if self.hud_client else False}")
                 else:
-                    self.llm_call_count += 1
+                    # LLM failed, log it
+                    self.llm_call_count += 1  # Count failed attempts too
+                    print(f"⚠️  LLM call failed (404 or error), but continuing to update HUD with screenshot...")
+                
+                # Send to HUD regardless of LLM success (we have screenshot + game state!)
+                if self.hud_client and self.hud_client.enabled:
+                    print(f"📤 Sending data to HUD (worker {self.instance_id})...")
+                    try:
+                        # Send vision data (screenshot)
+                        print(f"   📸 Sending screenshot ({len(screenshot)} chars)...")
+                        vision_success = self.hud_client.update_vision_data(screenshot, llm_response_time)
+                        print(f"   📸 Vision data sent: {vision_success}")
+                        
+                        # Send training data (game state)
+                        # Extract data from correct keys (no 'location' key exists!)
+                        player_data = game_state.get('player', {})
+                        room_id = player_data.get('room', 0)
+                        
+                        # Get room name
+                        location_name = 'Unknown'
+                        try:
+                            from observation.ram_maps.room_mappings import OVERWORLD_ROOMS
+                            location_name = OVERWORLD_ROOMS.get(room_id, f'Room {room_id}')
+                        except:
+                            location_name = f'Room {room_id}'
+                        
+                        # Extract entity counts
+                        entities_data = game_state.get('entities', {})
+                        npc_count = len(entities_data.get('npcs', []))
+                        enemy_count = len(entities_data.get('enemies', []))
+                        item_count = len(entities_data.get('items', []))
+                        
+                        # Format data to match HUD JavaScript expectations
+                        hud_training_data = {
+                            # Training Progress
+                            'global_step': self._step_count,  # HUD expects 'global_step' not 'step'
+                            'episode': self._episode_count,
+                            'episode_id': f"E{self.instance_id:04d}-{self._episode_count:04d}",  # Format: E0001-0005
+                            'epoch': 0,  # TODO: Get from Ray result
+                            'episode_reward': self._total_reward,
+                            'episode_length': self._step_count,
+                            
+                            # Game State (with correct object formats)
+                            'location': location_name,
+                            'room_id': room_id,
+                            'position': {  # HUD expects {x, y} object
+                                'x': player_data.get('x', 0),
+                                'y': player_data.get('y', 0)
+                            },
+                            'health': {  # HUD expects {current, max} object
+                                'current': player_data.get('health', 0),
+                                'max': player_data.get('max_health', 0)
+                            },
+                            'entities': {  # HUD expects {npcs, enemies, items} object
+                                'npcs': npc_count,
+                                'enemies': enemy_count,
+                                'items': item_count
+                            },
+                            
+                            # LLM Guidance
+                            'llm_suggestion': llm_action,
+                            'llm_scene_description': scene_desc,
+                            'llm_calls': self.llm_call_count,
+                            'llm_success_rate': self.llm_success_count / max(self.llm_call_count, 1),
+                            'alignment_bonus': llm_bonus,
+                        }
+                        print(f"   📊 Sending training data: step={self._step_count}, episode={self._episode_count}, location={location_name}...")
+                        training_success = self.hud_client.update_training_data(hud_training_data)
+                        print(f"   📊 Training data sent: {training_success}")
+                        print(f"✅ HUD update complete!")
+                    except Exception as e:
+                        # Don't crash training if HUD fails
+                        print(f"❌ HUD update failed: {type(e).__name__}: {e}")
+                        import traceback
+                        traceback.print_exc()
             
             # Add LLM stats to info
             info['llm_calls'] = self.llm_call_count
