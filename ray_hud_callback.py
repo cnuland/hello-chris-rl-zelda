@@ -73,12 +73,34 @@ class ZeldaHUDCallback(DefaultCallbacks):
             try:
                 print(f"🖥️  Initializing HUD client (from driver/callback)...")
                 print(f"   HUD URL: {self._hud_url}")
-                self.hud_client = HUDClient(hud_url=self._hud_url)
-                if not self.hud_client.enabled:
-                    print("⚠️  HUD connection failed, dashboard disabled")
-                    self.hud_client = None
-                else:
-                    print("✅ HUD callback initialized successfully!")
+                
+                # IMPORTANT: Callback should NOT register a session!
+                # Workers already registered. Callback just sends data.
+                # Use a simple HTTP client instead of HUDClient to avoid registration.
+                import requests
+                
+                class SimpleHUDClient:
+                    """Lightweight HUD client that doesn't register sessions."""
+                    def __init__(self, url):
+                        self.hud_url = url
+                        self.enabled = True
+                        self.session_id = None  # Not used, but needed for compatibility
+                    
+                    def update_training_data(self, data):
+                        """Send training data without session validation."""
+                        try:
+                            response = requests.post(
+                                f"{self.hud_url}/api/update_training",
+                                json={'session_id': None, 'data': data},
+                                timeout=2
+                            )
+                            return response.status_code == 200
+                        except:
+                            return False
+                
+                self.hud_client = SimpleHUDClient(self._hud_url)
+                print("✅ HUD callback initialized (no session registration)")
+                
             except Exception as e:
                 print(f"❌ Failed to initialize HUD client: {e}")
                 import traceback
