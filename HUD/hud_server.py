@@ -26,7 +26,7 @@ latest_data = {
 active_session_id = None
 active_session_timestamp = None
 session_lock = threading.Lock()
-SESSION_TIMEOUT = 10  # seconds - if no updates for 10s, session is considered dead
+SESSION_TIMEOUT = 3  # seconds - if no updates for 3s, session is considered dead (enables fast handoff)
 
 
 def register_session():

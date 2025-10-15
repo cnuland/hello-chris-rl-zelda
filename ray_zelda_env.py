@@ -461,6 +461,14 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         self._episode_count += 1
         self._total_reward = 0.0
         
+        # Try to claim HUD session if not already registered
+        # This creates a "hot handoff" - when one episode ends, another worker can take over
+        if hasattr(self, 'hud_client') and self.hud_client and not self.hud_client.enabled:
+            print(f"🔄 Attempting to claim HUD session (episode {self._episode_count})...")
+            if self.hud_client.register_session():
+                print(f"✅ HUD session claimed by worker {self.instance_id}!")
+            # If registration fails, that's OK - another worker has it
+        
         elapsed = time.time() - start_time
         print(f"✅ RESET complete in {elapsed:.2f}s")
         print(f"   Episode: {self._episode_count}")

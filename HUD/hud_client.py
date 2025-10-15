@@ -67,8 +67,10 @@ class HUDClient:
                 sys.stdout.flush()
                 return True
             elif response.status_code == 409:
-                print(f"⚠️  HUD already in use by another session")
+                print(f"⚠️  HUD already in use by another session (will retry later)")
                 sys.stdout.flush()
+                # Don't set enabled=True, but don't fail completely - we'll retry
+                self.enabled = False
                 return False
             else:
                 print(f"❌ HUD registration failed: {response.status_code} - {response.text}")
