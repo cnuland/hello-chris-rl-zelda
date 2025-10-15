@@ -171,8 +171,10 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         print(f"   Observation space: {self.observation_space.shape}")
         print(f"   Action space: {self.action_space}")
         if self.llm_enabled:
-            print(f"   🧠 Vision LLM: ENABLED (every {self.llm_frequency} steps)")
-            print(f"   📸 Image: {160*self.image_scale}×{144*self.image_scale}, {self.image_quality}% JPEG")
+            print(f"   🧠 LLM Guidance: ENABLED")
+            print(f"      💬 Text-only calls: every {self.llm_text_frequency} steps (fast!)")
+            print(f"      📸 Vision calls: every {self.llm_vision_frequency} steps (with screenshot)")
+            print(f"      🖼️  Image: {160*self.image_scale}×{144*self.image_scale}, {self.image_quality}% JPEG")
         if hasattr(self, 'hud_client') and self.hud_client and self.hud_client.enabled:
             print(f"   🖥️  HUD Client: ENABLED")
         if hasattr(self, 'session_manager') and self.session_manager and self.session_manager.enabled:
@@ -233,7 +235,15 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                 vision_config = yaml.safe_load(f)
             
             # Extract LLM settings (from performance section or planner_config)
-            self.llm_frequency = perf_config.get('llm_frequency', planner_config.get('llm_frequency', vision_config.get('behavior', {}).get('call_frequency', 5)))
+            # Support dual-frequency: text-only (fast) and vision (slower but more accurate)
+            self.llm_text_frequency = perf_config.get('llm_text_frequency', planner_config.get('llm_text_frequency', 10))
+            self.llm_vision_frequency = perf_config.get('llm_vision_frequency', planner_config.get('llm_vision_frequency', 100))
+            # Legacy support: if old llm_frequency is set, use it for text frequency
+            if 'llm_frequency' in perf_config or 'llm_frequency' in planner_config:
+                legacy_freq = perf_config.get('llm_frequency', planner_config.get('llm_frequency', 10))
+                self.llm_text_frequency = legacy_freq
+                self.llm_vision_frequency = legacy_freq * 10  # Vision is 10x less frequent
+            
             self.hud_update_frequency = perf_config.get('hud_update_frequency', planner_config.get('hud_update_frequency', 3))  # HUD updates more frequently than LLM
             self.alignment_bonus_multiplier = perf_config.get('alignment_bonus_multiplier', planner_config.get('alignment_bonus_multiplier', vision_config.get('behavior', {}).get('alignment_bonus_multiplier', 2.0)))
             
@@ -748,9 +758,12 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                 # Don't crash training if tracking fails
                 pass
         
-        # Call Vision LLM for guidance (every N steps)
+        # Call LLM for guidance (dual-frequency: text-only or vision)
         llm_bonus = 0.0
-        if self.llm_enabled and self._step_count % self.llm_frequency == 0:
+        is_vision_step = self.llm_enabled and (self._step_count % self.llm_vision_frequency == 0)
+        is_text_step = self.llm_enabled and (self._step_count % self.llm_text_frequency == 0) and not is_vision_step
+        
+        if is_vision_step or is_text_step:
             # Get structured game state
             if hasattr(self, 'state_encoder') and self.state_encoder:
                 # encode_state returns (vector_obs, structured_state)
@@ -765,10 +778,15 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                 game_state = {}
                 print(f"⚠️  No state_encoder available!")
             
-            # Capture screenshot
-            screenshot = self.capture_screenshot_base64()
+            # Capture screenshot only for vision calls
+            screenshot = None
+            if is_vision_step:
+                screenshot = self.capture_screenshot_base64()
+                print(f"📸 Vision LLM call (step {self._step_count}): with screenshot")
+            else:
+                print(f"💬 Text LLM call (step {self._step_count}): game state only")
             
-            if screenshot:
+            if screenshot or is_text_step:
                 # Initialize LLM result variables (in case LLM fails)
                 llm_action = self.last_llm_suggestion or 'N/A'  # Use last successful suggestion
                 scene_desc = 'LLM unavailable'
@@ -803,14 +821,18 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                     self.llm_call_count += 1  # Count failed attempts too
                     print(f"⚠️  LLM call failed (404 or error), but continuing to update HUD with screenshot...")
                 
-                # Send to HUD regardless of LLM success (we have screenshot + game state!)
+                # Send to HUD (vision calls send screenshot, text calls skip)
                 if self.hud_client and self.hud_client.enabled:
                     print(f"📤 Sending data to HUD (worker {self.instance_id})...")
                     try:
-                        # Send vision data (screenshot)
-                        print(f"   📸 Sending screenshot ({len(screenshot)} chars)...")
-                        vision_success = self.hud_client.update_vision_data(screenshot, llm_response_time)
-                        print(f"   📸 Vision data sent: {vision_success}")
+                        # Send vision data (screenshot) only for vision calls
+                        vision_success = True  # Default to True for text-only calls
+                        if screenshot:
+                            print(f"   📸 Sending screenshot ({len(screenshot)} chars)...")
+                            vision_success = self.hud_client.update_vision_data(screenshot, llm_response_time)
+                            print(f"   📸 Vision data sent: {vision_success}")
+                        else:
+                            print(f"   💬 Text-only call - skipping screenshot send")
                         
                         # Send training data (game state)
                         # Extract data from correct keys (no 'location' key exists!)
@@ -912,8 +934,9 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
             # Only send if HUD is enabled and we're not already sending via LLM block
             if self.hud_client and self.hud_client.enabled:
                 # Skip if we just sent via LLM (avoid duplicate)
-                llm_just_ran = self.llm_enabled and (self._step_count % self.llm_frequency == 0)
-                if not llm_just_ran:
+                llm_vision_just_ran = self.llm_enabled and (self._step_count % self.llm_vision_frequency == 0)
+                llm_text_just_ran = self.llm_enabled and (self._step_count % self.llm_text_frequency == 0)
+                if not (llm_vision_just_ran or llm_text_just_ran):
                     try:
                         # Capture fresh screenshot (optimized for HUD - fast!)
                         screenshot = self.capture_screenshot_base64(for_hud=True)
