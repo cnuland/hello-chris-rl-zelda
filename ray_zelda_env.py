@@ -663,11 +663,13 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                 headers["Host"] = self.llm_host_header
             
             # Call LLM API
+            # Vision calls can take 10-30s, text-only ~1-5s
+            timeout_seconds = 60 if screenshot_base64 else 15
             response = requests.post(
                 self.llm_endpoint,
                 json=payload,
                 headers=headers,
-                timeout=5  # 5 second timeout
+                timeout=timeout_seconds
             )
             
             if response.status_code == 200:
@@ -724,11 +726,20 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                     self._llm_error_logged = True
                 return None
                 
-        except requests.exceptions.Timeout:
-            print("⚠️  LLM request timed out")
+        except requests.exceptions.Timeout as e:
+            call_type = "VISION" if screenshot_base64 else "TEXT"
+            print(f"⚠️  LLM request timed out ({call_type} call, {timeout_seconds}s limit)")
+            print(f"   Endpoint: {self.llm_endpoint}")
+            print(f"   Error: {e}")
+            return None
+        except requests.exceptions.ConnectionError as e:
+            print(f"⚠️  LLM connection error (cannot reach service)")
+            print(f"   Endpoint: {self.llm_endpoint}")
+            print(f"   Error: {e}")
             return None
         except Exception as e:
-            print(f"⚠️  LLM call failed: {e}")
+            print(f"⚠️  LLM call failed: {type(e).__name__}: {e}")
+            print(f"   Endpoint: {self.llm_endpoint}")
             return None
     
     def compute_llm_alignment_bonus(self, action: int, llm_suggestion: Optional[str], is_vision: bool = False) -> float:
