@@ -462,12 +462,18 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
             return None
         
         try:
+            # Extract health values with debug logging
+            health = game_state.get('stats', {}).get('health', 0)
+            max_health = game_state.get('stats', {}).get('max_health', 0)
+            
+            print(f"🔍 DEBUG LLM Prompt: Sending health={health}/{max_health} to LLM")
+            
             # Format prompt with game state
             user_prompt = self.user_prompt_template.format(
                 location=game_state.get('location', {}).get('name', 'Unknown'),
                 cave_hint=game_state.get('location', {}).get('cave_hint', ''),
-                health=game_state.get('stats', {}).get('health', 0),
-                max_health=game_state.get('stats', {}).get('max_health', 0),
+                health=health,
+                max_health=max_health,
                 x=game_state.get('location', {}).get('x', 0),
                 y=game_state.get('location', {}).get('y', 0),
                 npc_count=len(game_state.get('entities', {}).get('npcs', [])),
@@ -617,8 +623,15 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
             if hasattr(self, 'state_encoder') and self.state_encoder:
                 # encode_state returns (vector_obs, structured_state)
                 _, game_state = self.state_encoder.encode_state(self.bridge)
+                
+                # DEBUG: Log actual health values from game state
+                health = game_state.get('stats', {}).get('health', 'MISSING')
+                max_health = game_state.get('stats', {}).get('max_health', 'MISSING')
+                print(f"🔍 DEBUG Health: {health}/{max_health} (from game_state['stats'])")
+                print(f"   Full stats: {game_state.get('stats', 'MISSING')}")
             else:
                 game_state = {}
+                print(f"⚠️  No state_encoder available!")
             
             # Capture screenshot
             screenshot = self.capture_screenshot_base64()
