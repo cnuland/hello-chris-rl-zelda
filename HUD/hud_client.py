@@ -47,36 +47,31 @@ class HUDClient:
     def register_session(self) -> bool:
         """
         Register this training session with the HUD server.
-        SIMPLIFIED: No backoff, all workers can send!
+        No backoff - retry every reset until successful!
         
         Returns:
             bool: True if registration successful
         """
         if not self.hud_url:
-            print("⚠️  HUD URL not set, skipping registration")
             return False
         
-        print(f"📡 Registering with HUD: {self.hud_url}/api/register_session")
-        
         try:
-            import sys
-            sys.stdout.flush()  # Force output to appear immediately
-            
             response = self.session.post(
                 f"{self.hud_url}/api/register_session",
-                timeout=5
+                timeout=2
             )
             
             if response.status_code == 200:
                 data = response.json()
                 self.session_id = data.get('session_id')
                 self.enabled = True
-                print(f"✅ HUD registered: {self.session_id[:8]}... (all workers can send)")
-                sys.stdout.flush()
+                print(f"✅ HUD session registered: {self.session_id[:8]}...")
                 return True
+            elif response.status_code == 409:
+                # Another session active, will retry next reset
+                self.enabled = False
+                return False
             else:
-                print(f"⚠️  HUD registration failed: {response.status_code}")
-                sys.stdout.flush()
                 return False
         except requests.exceptions.Timeout as e:
             print(f"❌ HUD connection TIMEOUT after 10s: {e}")
