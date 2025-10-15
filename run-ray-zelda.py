@@ -2,7 +2,7 @@
 Ray RLlib Training Script for Zelda Oracle of Seasons
 Uses vector observations + vision LLM (matches existing hybrid approach)
 
-Cache bust: 2025-10-14 23:00 - Fix config path (planner_integration under performance)
+Cache bust: 2025-10-15 04:10 - Debug HUD vision data (add logging)
 """
 
 from pathlib import Path

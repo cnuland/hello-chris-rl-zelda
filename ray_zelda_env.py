@@ -223,9 +223,14 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         """Initialize HUD client for sending vision updates."""
         self.hud_client = None
         
+        print(f"   🖥️  HUD init check: instance_id={self.instance_id}")
+        
         # Only initialize HUD on worker 1, env 0 to avoid multiple sessions
         if self.instance_id != 1:
+            print(f"   ⏭️  Skipping HUD init (instance_id={self.instance_id}, need 1)")
             return
+        
+        print(f"   🎯 This is worker 1! Initializing HUD client...")
         
         try:
             hud_url = os.environ.get('HUD_URL')
