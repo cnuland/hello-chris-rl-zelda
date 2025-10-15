@@ -168,6 +168,8 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
     
     def _init_vision_llm(self):
         """Initialize vision LLM integration if enabled in config."""
+        print("🧠 === _init_vision_llm() CALLED ===")
+        
         # Initialize as disabled by default
         self.llm_enabled = False
         self.llm_call_count = 0
@@ -177,13 +179,21 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         
         # Check if LLM is enabled from environment config
         try:
+            print(f"🔍 Checking config... hasattr={hasattr(self, 'config')}, config={'exists' if hasattr(self, 'config') and self.config else 'missing'}")
+            if hasattr(self, 'config') and self.config:
+                print(f"🔍 Config keys: {list(self.config.keys())}")
+            
             if not hasattr(self, 'config') or not self.config:
                 print("   🧠 Vision LLM: DISABLED (no config)")
                 return
             
             # planner_integration is nested under 'performance' in env.yaml
             perf_config = self.config.get('performance', {})
+            print(f"🔍 Performance config keys: {list(perf_config.keys()) if perf_config else 'none'}")
+            
             planner_config = perf_config.get('planner_integration', {})
+            print(f"🔍 Planner config: {planner_config}")
+            
             if not planner_config:
                 print("   🧠 Vision LLM: DISABLED (no planner_integration in config)")
                 print(f"   Debug: performance keys: {list(perf_config.keys()) if perf_config else 'none'}")
