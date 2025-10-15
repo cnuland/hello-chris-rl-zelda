@@ -225,10 +225,14 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
             self.hud_update_frequency = perf_config.get('hud_update_frequency', planner_config.get('hud_update_frequency', 3))  # HUD updates more frequently than LLM
             self.alignment_bonus_multiplier = perf_config.get('alignment_bonus_multiplier', planner_config.get('alignment_bonus_multiplier', vision_config.get('behavior', {}).get('alignment_bonus_multiplier', 2.0)))
             
-            # Extract vision settings (from performance section or planner_config)
+            # Extract vision settings for LLM (high quality)
             self.image_scale = perf_config.get('image_scale', planner_config.get('image_scale', vision_config.get('vision_config', {}).get('image_scale', 2)))
             self.image_quality = perf_config.get('image_quality', planner_config.get('image_quality', vision_config.get('vision_config', {}).get('image_quality', 75)))
             self.image_format = perf_config.get('image_format', planner_config.get('image_format', vision_config.get('vision_config', {}).get('image_format', 'jpeg')))
+            
+            # Extract HUD streaming settings (optimized for speed)
+            self.hud_image_scale = perf_config.get('hud_image_scale', planner_config.get('hud_image_scale', 1))  # Default: native resolution
+            self.hud_image_quality = perf_config.get('hud_image_quality', planner_config.get('hud_image_quality', 40))  # Default: 40% quality
             
             # Store prompts
             self.system_prompt = vision_config.get('system_prompt', '')
@@ -478,9 +482,15 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         
         return obs, info
     
-    def capture_screenshot_base64(self) -> Optional[str]:
-        """Capture Game Boy screen as base64-encoded JPEG for LLM."""
-        if not self.llm_enabled:
+    def capture_screenshot_base64(self, for_hud: bool = False) -> Optional[str]:
+        """
+        Capture Game Boy screen as base64-encoded JPEG.
+        
+        Args:
+            for_hud: If True, use fast HUD settings (lower quality, no upscaling)
+                     If False, use high-quality LLM settings
+        """
+        if not for_hud and not self.llm_enabled:
             return None
         
         try:
@@ -499,14 +509,24 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
             elif image.mode != 'RGB':
                 image = image.convert('RGB')
             
-            # Upscale for better LLM understanding
-            if self.image_scale > 1:
-                new_size = (image.width * self.image_scale, image.height * self.image_scale)
+            # Choose settings based on purpose
+            if for_hud:
+                # Fast HUD streaming: native resolution + lower quality
+                scale = getattr(self, 'hud_image_scale', 1)
+                quality = getattr(self, 'hud_image_quality', 40)
+            else:
+                # High-quality LLM: upscaled + better quality
+                scale = self.image_scale
+                quality = self.image_quality
+            
+            # Upscale if needed
+            if scale > 1:
+                new_size = (image.width * scale, image.height * scale)
                 image = image.resize(new_size, Image.Resampling.NEAREST)
             
             # Convert to JPEG and encode as base64
             buffer = io.BytesIO()
-            image.save(buffer, format="JPEG", quality=self.image_quality)
+            image.save(buffer, format="JPEG", quality=quality)
             img_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
             
             return img_base64
@@ -856,8 +876,8 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                 llm_just_ran = self.llm_enabled and (self._step_count % self.llm_frequency == 0)
                 if not llm_just_ran:
                     try:
-                        # Capture fresh screenshot
-                        screenshot = self.capture_screenshot_base64()
+                        # Capture fresh screenshot (optimized for HUD - fast!)
+                        screenshot = self.capture_screenshot_base64(for_hud=True)
                         if screenshot:
                             # Get game state for HUD data
                             if hasattr(self, 'state_encoder') and self.state_encoder:
