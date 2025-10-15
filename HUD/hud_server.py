@@ -26,7 +26,7 @@ latest_data = {
 active_session_id = None
 active_session_timestamp = None
 session_lock = threading.Lock()
-SESSION_TIMEOUT = 30  # seconds - if no updates for 30s, session is considered dead
+SESSION_TIMEOUT = 10  # seconds - if no updates for 10s, session is considered dead
 
 
 def register_session():
@@ -161,6 +161,27 @@ def api_update_vision():
 def health():
     """Health check endpoint for Kubernetes"""
     return jsonify({'status': 'healthy'}), 200
+
+
+@app.route('/api/reset_session', methods=['POST'])
+def api_reset_session():
+    """
+    API endpoint to force reset/clear the active session.
+    Useful when restarting training jobs to clear stale sessions.
+    """
+    global active_session_id, active_session_timestamp
+    
+    with session_lock:
+        old_session = active_session_id
+        active_session_id = None
+        active_session_timestamp = None
+        
+        if old_session:
+            print(f"🔄 Session reset: Cleared session {old_session[:8]}...")
+            return jsonify({'status': 'reset', 'previous_session': old_session[:8]}), 200
+        else:
+            print(f"🔄 Session reset: No active session to clear")
+            return jsonify({'status': 'reset', 'previous_session': None}), 200
 
 
 def update_training_data(data, session_id=None):
