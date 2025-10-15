@@ -26,6 +26,8 @@ class HUDClient:
         self.hud_url = hud_url or os.environ.get('HUD_URL')
         self.session_id = None
         self.enabled = False
+        self.retry_counter = 0  # Track failed registration attempts
+        self.retry_delay = 10   # Wait 10 resets before retrying after 409
         
         if self.hud_url:
             print(f"🖥️  HUD Client connecting to: {self.hud_url}")
@@ -36,12 +38,20 @@ class HUDClient:
     def register_session(self) -> bool:
         """
         Register this training session with the HUD server.
+        Implements backoff to avoid DDOSing server when slot is taken.
         
         Returns:
             bool: True if registration successful
         """
         if not self.hud_url:
             print("⚠️  HUD URL not set, skipping registration")
+            return False
+        
+        # Backoff mechanism: if we were rejected before, wait before retrying
+        if self.retry_counter > 0:
+            self.retry_counter -= 1
+            if self.retry_counter % 5 == 0:  # Only log every 5 resets
+                print(f"⏳ Waiting to retry HUD registration ({self.retry_counter} resets remaining)")
             return False
         
         print(f"📡 Attempting HUD registration at: {self.hud_url}/api/register_session")
@@ -63,13 +73,15 @@ class HUDClient:
                 data = response.json()
                 self.session_id = data.get('session_id')
                 self.enabled = True
+                self.retry_counter = 0  # Reset retry counter on success
                 print(f"✅ HUD session registered: {self.session_id[:8]}...")
                 sys.stdout.flush()
                 return True
             elif response.status_code == 409:
-                print(f"⚠️  HUD already in use by another session (will retry later)")
+                # HUD is in use - back off to avoid DDOSing the server
+                self.retry_counter = self.retry_delay
+                print(f"⚠️  HUD already in use (backing off for {self.retry_delay} resets)")
                 sys.stdout.flush()
-                # Don't set enabled=True, but don't fail completely - we'll retry
                 self.enabled = False
                 return False
             else:
