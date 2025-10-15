@@ -26,24 +26,58 @@ def init_rom_from_s3():
     print(f"   Endpoint: {s3_endpoint}")
     print(f"   Bucket: {s3_bucket}")
     
+    # Quick connectivity test
     try:
-        # Create S3 client
+        import socket
+        import urllib.parse
+        
+        parsed = urllib.parse.urlparse(s3_endpoint)
+        host = parsed.hostname
+        port = parsed.port or (443 if parsed.scheme == 'https' else 80)
+        
+        print(f"   Testing connectivity to {host}:{port}...")
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(5)  # 5 second timeout
+        result = sock.connect_ex((host, port))
+        sock.close()
+        
+        if result == 0:
+            print(f"   ✅ TCP connection successful")
+        else:
+            print(f"   ❌ TCP connection FAILED (error {result})")
+            print(f"      This means MinIO service is not reachable!")
+            return False
+    except Exception as e:
+        print(f"   ⚠️  Connectivity test failed: {e}")
+        print(f"      Continuing anyway...")
+    
+    try:
+        # Create S3 client with aggressive timeouts
+        print(f"   Creating S3 client with 30s timeout...")
         s3 = boto3.client(
             's3',
             endpoint_url=s3_endpoint,
             aws_access_key_id=os.environ.get('S3_ACCESS_KEY_ID'),
             aws_secret_access_key=os.environ.get('S3_SECRET_ACCESS_KEY'),
             region_name=os.environ.get('S3_REGION_NAME', 'us-east-1'),
-            config=Config(signature_version='s3v4')
+            config=Config(
+                signature_version='s3v4',
+                connect_timeout=30,  # 30s connection timeout
+                read_timeout=30,     # 30s read timeout
+                retries={'max_attempts': 3}  # 3 retry attempts
+            )
         )
+        print(f"   ✅ S3 client created")
         
         # Create roms directory
         rom_dir = Path('roms')
         rom_dir.mkdir(exist_ok=True)
+        print(f"   ✅ ROM directory ready: {rom_dir}")
         
         # List all files in the roms bucket
-        print(f"   Listing files in bucket...")
+        print(f"   Listing files in bucket (this may take 30-60s)...")
         response = s3.list_objects_v2(Bucket=s3_bucket)
+        print(f"   ✅ Bucket listing received")
         
         if 'Contents' not in response:
             print(f"   ⚠️  No files found in bucket")
