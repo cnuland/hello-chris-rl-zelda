@@ -57,7 +57,7 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         # DEBUG: Print environment info
         print("\n" + "="*70)
         print("🔍 DEBUG: ZeldaRayEnv Path Resolution")
-        print("🆕 CODE VERSION: 2025-10-15-05:20 [HEALTH DEBUG ENABLED]")
+        print("🆕 CODE VERSION: 2025-10-15-05:30 [ALL game_state KEYS FIXED]")
         print("="*70)
         print(f"CWD: {Path.cwd()}")
         print(f"__file__: {__file__ if '__file__' in globals() else 'N/A'}")
@@ -463,24 +463,43 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
             return None
         
         try:
-            # Extract health values with debug logging [FIXED 2025-10-15 05:25]
-            # Health is in game_state['player'], not game_state['stats']!
-            health = game_state.get('player', {}).get('health', 0)
-            max_health = game_state.get('player', {}).get('max_health', 0)
+            # Extract values from game_state [FIXED 2025-10-15 05:30]
+            # Structure: game_state['player'] has x, y, room, health, max_health
+            # NO 'location' or 'entities' keys exist!
+            player = game_state.get('player', {})
+            health = player.get('health', 0)
+            max_health = player.get('max_health', 0)
+            x = player.get('x', 0)
+            y = player.get('y', 0)
+            room_id = player.get('room', 0)
             
-            print(f"📤 SENDING TO LLM: health={health}/{max_health} hearts")
+            # Get room name from room_mappings (if available)
+            location_name = 'Unknown'
+            try:
+                from observation.ram_maps.room_mappings import OVERWORLD_ROOMS
+                location_name = OVERWORLD_ROOMS.get(room_id, f'Room {room_id}')
+            except:
+                location_name = f'Room {room_id}'
+            
+            # Entities might not exist (depends on use_structured_entities config)
+            entities = game_state.get('entities', {})
+            npc_count = len(entities.get('npcs', []))
+            enemy_count = len(entities.get('enemies', []))
+            item_count = len(entities.get('items', []))
+            
+            print(f"📤 SENDING TO LLM: {location_name}, health={health}/{max_health}, pos=({x},{y})")
             
             # Format prompt with game state
             user_prompt = self.user_prompt_template.format(
-                location=game_state.get('location', {}).get('name', 'Unknown'),
-                cave_hint=game_state.get('location', {}).get('cave_hint', ''),
+                location=location_name,
+                cave_hint='',  # No cave_hint in current structure
                 health=health,
                 max_health=max_health,
-                x=game_state.get('location', {}).get('x', 0),
-                y=game_state.get('location', {}).get('y', 0),
-                npc_count=len(game_state.get('entities', {}).get('npcs', [])),
-                enemy_count=len(game_state.get('entities', {}).get('enemies', [])),
-                item_count=len(game_state.get('entities', {}).get('items', []))
+                x=x,
+                y=y,
+                npc_count=npc_count,
+                enemy_count=enemy_count,
+                item_count=item_count
             )
             
             # Prepare API request
@@ -671,18 +690,30 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                             self.hud_client.update_vision_data(screenshot, llm_response_time)
                             
                             # Send training data (game state)
+                            # Extract data from correct keys (no 'location' key exists!)
+                            player_data = game_state.get('player', {})
+                            room_id = player_data.get('room', 0)
+                            
+                            # Get room name
+                            location_name = 'Unknown'
+                            try:
+                                from observation.ram_maps.room_mappings import OVERWORLD_ROOMS
+                                location_name = OVERWORLD_ROOMS.get(room_id, f'Room {room_id}')
+                            except:
+                                location_name = f'Room {room_id}'
+                            
                             hud_training_data = {
-                                'llm_suggestion': llm_action,  # The action LLM suggested
-                                'llm_scene_description': scene_desc,  # What LLM saw
+                                'llm_suggestion': llm_action,
+                                'llm_scene_description': scene_desc,
                                 'llm_calls': self.llm_call_count,
                                 'llm_success_rate': self.llm_success_count / max(self.llm_call_count, 1),
                                 'alignment_bonus': llm_bonus,
                                 'step': self._step_count,
                                 'episode': self._episode_count,
-                                'location': game_state.get('location', {}).get('name', 'Unknown'),
-                                'room_id': game_state.get('location', {}).get('room', 0),
-                                'health': game_state.get('player', {}).get('health', 0),  # Fixed: health is in 'player'
-                                'max_health': game_state.get('player', {}).get('max_health', 0),  # Fixed: health is in 'player'
+                                'location': location_name,
+                                'room_id': room_id,
+                                'health': player_data.get('health', 0),
+                                'max_health': player_data.get('max_health', 0),
                             }
                             self.hud_client.update_training_data(hud_training_data)
                         except Exception as e:
