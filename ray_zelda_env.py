@@ -195,8 +195,13 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
             # LLM model name (optional - if empty, don't send model parameter)
             self.llm_model_name = planner_config.get('llm_model_name', '')
             
+            # LLM Host header (required for some load balancers/ingress controllers)
+            self.llm_host_header = os.environ.get('LLM_HOST_HEADER', '')
+            
             print(f"   ✅ Vision LLM config loaded from: {vision_config_path}")
             print(f"   📡 LLM Endpoint: {self.llm_endpoint}")
+            if self.llm_host_header:
+                print(f"   🌐 Host Header: {self.llm_host_header}")
             if self.llm_model_name:
                 print(f"   🤖 Model: {self.llm_model_name}")
             else:
@@ -465,10 +470,16 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
             if self.llm_model_name:
                 payload["model"] = self.llm_model_name
             
+            # Prepare headers (including Host header if specified)
+            headers = {"Content-Type": "application/json"}
+            if self.llm_host_header:
+                headers["Host"] = self.llm_host_header
+            
             # Call LLM API
             response = requests.post(
                 self.llm_endpoint,
                 json=payload,
+                headers=headers,
                 timeout=5  # 5 second timeout
             )
             
