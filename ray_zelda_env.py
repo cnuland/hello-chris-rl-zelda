@@ -57,7 +57,7 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         # DEBUG: Print environment info
         print("\n" + "="*70)
         print("🔍 DEBUG: ZeldaRayEnv Path Resolution")
-        print("🆕 CODE VERSION: 2025-10-15-06:00 [HUD: All workers try to register]")
+        print("🆕 CODE VERSION: 2025-10-15-06:30 [Session Manager: Save episodes to S3]")
         print("="*70)
         print(f"CWD: {Path.cwd()}")
         print(f"__file__: {__file__ if '__file__' in globals() else 'N/A'}")
@@ -150,6 +150,9 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         # Initialize HUD client for vision updates
         self._init_hud_client()
         
+        # Initialize Session Manager for saving checkpoints and summaries
+        self._init_session_manager()
+        
         print(f"✅ ZeldaRayEnv initialized (Instance: {self.instance_id})")
         print(f"   ROM: {rom_path}")
         print(f"   Config: {config_path}")
@@ -160,6 +163,8 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
             print(f"   📸 Image: {160*self.image_scale}×{144*self.image_scale}, {self.image_quality}% JPEG")
         if hasattr(self, 'hud_client') and self.hud_client and self.hud_client.enabled:
             print(f"   🖥️  HUD Client: ENABLED")
+        if hasattr(self, 'session_manager') and self.session_manager and self.session_manager.enabled:
+            print(f"   💾 Session Manager: ENABLED → s3://sessions/{self.session_manager.session_id}")
     
     def _init_vision_llm(self):
         """Initialize vision LLM integration if enabled in config."""
@@ -286,6 +291,42 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         except Exception as e:
             print(f"   ❌ Error initializing HUD client: {e}")
             self.hud_client = None
+    
+    def _init_session_manager(self):
+        """Initialize Session Manager for saving checkpoints and summaries."""
+        self.session_manager = None
+        
+        # Episode tracking for saves
+        self.episode_data = {
+            'steps': [],
+            'rewards': [],
+            'actions': [],
+            'llm_suggestions': [],
+            'locations': []
+        }
+        
+        try:
+            from session_manager import SessionManager
+            
+            # Create unique session ID from training run
+            import time
+            session_id = f"ray_training_{int(time.time())}"
+            
+            self.session_manager = SessionManager(session_id=session_id)
+            
+            if self.session_manager.enabled:
+                print(f"   ✅ Session Manager initialized")
+                print(f"      Session ID: {session_id}")
+                print(f"      Bucket: s3://sessions/")
+            else:
+                print(f"   ⚠️  Session Manager disabled (S3 not configured)")
+                
+        except ImportError as e:
+            print(f"   ⚠️  Session Manager not available: {e}")
+            self.session_manager = None
+        except Exception as e:
+            print(f"   ❌ Error initializing Session Manager: {e}")
+            self.session_manager = None
     
     @staticmethod
     def _ensure_rom_files(rom_path: str):
@@ -639,6 +680,23 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         # Call parent step
         obs, reward, terminated, truncated, info = super().step(action)
         
+        # Track episode data for session saving
+        if hasattr(self, 'session_manager') and self.session_manager and self.session_manager.enabled:
+            try:
+                # Get current game state for tracking
+                game_state = self.get_structured_state() if hasattr(self, 'get_structured_state') else {}
+                player_data = game_state.get('player', {})
+                room_id = player_data.get('room', 0)
+                
+                self.episode_data['steps'].append(self._step_count)
+                self.episode_data['rewards'].append(reward)
+                self.episode_data['actions'].append(action)
+                self.episode_data['llm_suggestions'].append(getattr(self, 'last_llm_suggestion', None))
+                self.episode_data['locations'].append(room_id)
+            except Exception as e:
+                # Don't crash training if tracking fails
+                pass
+        
         # Call Vision LLM for guidance (every N steps)
         llm_bonus = 0.0
         if self.llm_enabled and self._step_count % self.llm_frequency == 0:
@@ -757,6 +815,59 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                 if 'rooms_discovered' in info:
                     print(f"   Rooms Discovered: {info.get('rooms_discovered', 0)}")
                 print(f"{'='*70}\n")
+                
+                # Save episode summary and checkpoint to S3
+                if hasattr(self, 'session_manager') and self.session_manager and self.session_manager.enabled:
+                    try:
+                        # Prepare episode summary
+                        episode_summary = {
+                            'episode_num': self._episode_count,
+                            'total_steps': self._step_count,
+                            'total_reward': self._total_reward,
+                            'avg_reward_per_step': self._total_reward / max(self._step_count, 1),
+                            'llm_calls': info.get('llm_calls', 0),
+                            'llm_success_rate': info.get('llm_success_rate', 0.0),
+                            'rooms_discovered': info.get('rooms_discovered', 0),
+                            'unique_locations': len(set(self.episode_data['locations'])),
+                            'actions_taken': self.episode_data['actions'],
+                            'rewards_per_step': self.episode_data['rewards'],
+                            'llm_suggestions': self.episode_data['llm_suggestions'],
+                            'terminated': terminated,
+                            'truncated': truncated,
+                        }
+                        
+                        # Save episode summary
+                        self.session_manager.save_episode_summary(
+                            worker_id=self.instance_id,
+                            episode_num=self._episode_count,
+                            summary_data=episode_summary
+                        )
+                        
+                        # Optional: Save checkpoint metadata (not full model - that's handled by Ray)
+                        checkpoint_meta = {
+                            'episode_num': self._episode_count,
+                            'total_steps': self._step_count,
+                            'total_reward': self._total_reward,
+                            'timestamp': time.time()
+                        }
+                        self.session_manager.save_checkpoint(
+                            worker_id=self.instance_id,
+                            episode_num=self._episode_count,
+                            checkpoint_data=checkpoint_meta,
+                            model_state=None  # Ray handles model checkpointing
+                        )
+                        
+                    except Exception as e:
+                        print(f"   ⚠️  Failed to save episode data: {e}")
+                    
+                    # Reset episode data for next episode
+                    self.episode_data = {
+                        'steps': [],
+                        'rewards': [],
+                        'actions': [],
+                        'llm_suggestions': [],
+                        'locations': []
+                    }
         
         return obs, reward, terminated, truncated, info
     
