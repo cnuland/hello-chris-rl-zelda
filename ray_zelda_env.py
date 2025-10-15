@@ -222,6 +222,7 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
             
             # Extract LLM settings (from performance section or planner_config)
             self.llm_frequency = perf_config.get('llm_frequency', planner_config.get('llm_frequency', vision_config.get('behavior', {}).get('call_frequency', 5)))
+            self.hud_update_frequency = perf_config.get('hud_update_frequency', planner_config.get('hud_update_frequency', 3))  # HUD updates more frequently than LLM
             self.alignment_bonus_multiplier = perf_config.get('alignment_bonus_multiplier', planner_config.get('alignment_bonus_multiplier', vision_config.get('behavior', {}).get('alignment_bonus_multiplier', 2.0)))
             
             # Extract vision settings (from performance section or planner_config)
@@ -837,6 +838,76 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
             # Add LLM stats to info
             info['llm_calls'] = self.llm_call_count
             info['llm_success_rate'] = self.llm_success_count / max(self.llm_call_count, 1)
+        
+        # Stream screenshots to HUD more frequently (independent of LLM calls)
+        # This provides smooth visual updates even when LLM isn't being called
+        if hasattr(self, 'hud_update_frequency') and self._step_count % self.hud_update_frequency == 0:
+            # Only send if HUD is enabled and we're not already sending via LLM block
+            if self.hud_client and self.hud_client.enabled:
+                # Skip if we just sent via LLM (avoid duplicate)
+                llm_just_ran = self.llm_enabled and (self._step_count % self.llm_frequency == 0)
+                if not llm_just_ran:
+                    try:
+                        # Capture fresh screenshot
+                        screenshot = self.capture_screenshot_base64()
+                        if screenshot:
+                            # Get game state for HUD data
+                            if hasattr(self, 'state_encoder') and self.state_encoder:
+                                _, game_state = self.state_encoder.encode_state(self.bridge)
+                            else:
+                                game_state = {}
+                            
+                            # Send vision data (screenshot only, no LLM response time)
+                            vision_success = self.hud_client.update_vision_data(screenshot, 0)
+                            
+                            # Send training data (game state)
+                            player_data = game_state.get('player', {})
+                            room_id = player_data.get('room', 0)
+                            
+                            # Get room name
+                            location_name = 'Unknown'
+                            try:
+                                from observation.ram_maps.room_mappings import OVERWORLD_ROOMS
+                                location_name = OVERWORLD_ROOMS.get(room_id, f'Room {room_id}')
+                            except:
+                                location_name = f'Room {room_id}'
+                            
+                            # Extract entity counts
+                            entities_data = game_state.get('entities', {})
+                            npc_count = len(entities_data.get('npcs', []))
+                            enemy_count = len(entities_data.get('enemies', []))
+                            item_count = len(entities_data.get('items', []))
+                            
+                            # Format data for HUD (minimal update, preserve LLM data)
+                            hud_training_data = {
+                                'global_step': self._step_count,
+                                'episode': self._episode_count,
+                                'episode_id': f"E{self.instance_id:04d}-{self._episode_count:04d}",
+                                'episode_reward': self._total_reward,
+                                'location': location_name,
+                                'room_id': room_id,
+                                'position': {
+                                    'x': player_data.get('x', 0),
+                                    'y': player_data.get('y', 0)
+                                },
+                                'health': {
+                                    'current': player_data.get('health', 0),
+                                    'max': player_data.get('max_health', 0)
+                                },
+                                'entities': {
+                                    'npcs': npc_count,
+                                    'enemies': enemy_count,
+                                    'items': item_count
+                                },
+                            }
+                            
+                            training_success = self.hud_client.update_training_data(hud_training_data)
+                            
+                            if vision_success and training_success:
+                                print(f"🎬 HUD stream update: step={self._step_count}, location={location_name}")
+                    except Exception as e:
+                        # Don't crash training if HUD streaming fails
+                        print(f"⚠️  HUD stream update failed: {e}")
         
         # Ensure observation is the correct type
         if not isinstance(obs, np.ndarray):
