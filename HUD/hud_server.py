@@ -166,21 +166,21 @@ def health():
 def update_training_data(data, session_id=None):
     """
     Update training data and push to all connected clients.
-    Only updates if session_id matches the active session.
+    Accepts data from any worker as long as a session is registered.
     
     Args:
         data: Dictionary containing training metrics
-        session_id: Session UUID (optional for backward compatibility)
+        session_id: Session UUID (optional, not validated)
     
     Returns:
-        bool: True if update was accepted, False if rejected
+        bool: True if update was accepted, False if no session active
     """
-    global latest_data
+    global latest_data, active_session_id
     
-    # If session_id is provided, validate it
-    if session_id is not None:
-        if not is_session_active(session_id):
-            return False
+    # Accept data from any worker as long as ANY session is registered
+    # This allows distributed workers to all send data to the HUD
+    if active_session_id is None:
+        return False  # No session registered at all
     
     latest_data['training'] = data
     data_queue.put({
@@ -193,22 +193,22 @@ def update_training_data(data, session_id=None):
 def update_vision_data(image_base64, response_time=None, session_id=None):
     """
     Update vision image and push to all connected clients.
-    Only updates if session_id matches the active session.
+    Accepts data from any worker as long as a session is registered.
     
     Args:
         image_base64: Base64 encoded JPEG image
         response_time: LLM response time in milliseconds (optional)
-        session_id: Session UUID (optional for backward compatibility)
+        session_id: Session UUID (optional, not validated)
         
     Returns:
-        bool: True if update was accepted, False if rejected
+        bool: True if update was accepted, False if no session active
     """
-    global latest_data
+    global latest_data, active_session_id
     
-    # If session_id is provided, validate it
-    if session_id is not None:
-        if not is_session_active(session_id):
-            return False
+    # Accept data from any worker as long as ANY session is registered
+    # This allows distributed workers to all send data to the HUD
+    if active_session_id is None:
+        return False  # No session registered at all
     
     vision_data = {
         'image': image_base64,

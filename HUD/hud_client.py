@@ -118,10 +118,9 @@ class HUDClient:
             if response.status_code == 200:
                 return True
             elif response.status_code == 403:
-                # Session no longer active
-                print(f"⚠️  Lost HUD connection - another session took over")
-                self.enabled = False
-                return False
+                # Session validation issue (should not happen with shared session mode)
+                print(f"⚠️  HUD update rejected (403) - retrying next time")
+                return False  # Don't disable, just retry next time
             else:
                 return False
         except Exception as e:
@@ -156,10 +155,9 @@ class HUDClient:
             if response.status_code == 200:
                 return True
             elif response.status_code == 403:
-                # Session no longer active
-                print(f"⚠️  Lost HUD connection - another session took over")
-                self.enabled = False
-                return False
+                # Session validation issue (should not happen with shared session mode)
+                print(f"⚠️  HUD update rejected (403) - retrying next time")
+                return False  # Don't disable, just retry next time
             else:
                 return False
         except Exception as e:
