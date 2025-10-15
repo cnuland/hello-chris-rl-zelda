@@ -626,12 +626,11 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                 # encode_state returns (vector_obs, structured_state)
                 _, game_state = self.state_encoder.encode_state(self.bridge)
                 
-                # DEBUG: Log actual health values from game state [FIXED 2025-10-15 05:25]
-                # Health is in game_state['player'], not game_state['stats']!
-                health = game_state.get('player', {}).get('health', 'MISSING')
-                max_health = game_state.get('player', {}).get('max_health', 'MISSING')
-                print(f"🩺 HEALTH DEBUG: {health}/{max_health} hearts (from game_state['player'])")
+                # DEBUG: Log game_state structure to see what keys exist
+                print(f"🔑 game_state KEYS: {list(game_state.keys())}")
                 print(f"📊 PLAYER DATA: {game_state.get('player', 'MISSING')}")
+                print(f"📍 LOCATION DATA: {game_state.get('location', 'MISSING')}")
+                print(f"👥 ENTITIES DATA: {game_state.get('entities', 'MISSING')}")
             else:
                 game_state = {}
                 print(f"⚠️  No state_encoder available!")
