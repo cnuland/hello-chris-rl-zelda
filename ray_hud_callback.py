@@ -171,14 +171,20 @@ class ZeldaHUDCallback(DefaultCallbacks):
             training_data['vf_loss'] = learner_info.get('learner_stats', {}).get('vf_loss', 0.0)
             training_data['entropy'] = learner_info.get('learner_stats', {}).get('entropy', 0.0)
         
-        # DISABLED: Don't send from callback - let workers send everything
-        # This prevents conflicts between callback and worker data streams
-        print(f"📊 Training metrics: epoch={training_data['epoch']}, "
-              f"steps={training_data['global_step']}, "
-              f"episodes={training_data['episode']}, "
-              f"reward={training_data['episode_reward']:.1f}")
-        print(f"   (HUD updates disabled from callback - workers send all data)")
+        # Send training metrics from callback
+        # Workers will merge their data (vision, game state) with this
+        try:
+            if self.hud_client and self.hud_client.enabled:
+                success = self.hud_client.update_training_data(training_data)
+                if success:
+                    print(f"📊 HUD updated: epoch={training_data['epoch']}, "
+                          f"steps={training_data['global_step']}, "
+                          f"episodes={training_data['episode']}, "
+                          f"reward={training_data['episode_reward']:.1f}")
+                else:
+                    print(f"⚠️  HUD update failed")
+        except Exception as e:
+            print(f"❌ Error sending data to HUD: {e}")
         
-        # Note: ALL data (training metrics + vision + game state) is sent from workers
-        # when LLM is called every 5 steps
+        # Note: Workers will merge vision data + game state with these training metrics
 
