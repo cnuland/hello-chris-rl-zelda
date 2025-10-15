@@ -57,6 +57,7 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         # DEBUG: Print environment info
         print("\n" + "="*70)
         print("🔍 DEBUG: ZeldaRayEnv Path Resolution")
+        print("🆕 CODE VERSION: 2025-10-15-05:20 [HEALTH DEBUG ENABLED]")
         print("="*70)
         print(f"CWD: {Path.cwd()}")
         print(f"__file__: {__file__ if '__file__' in globals() else 'N/A'}")
@@ -462,11 +463,12 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
             return None
         
         try:
-            # Extract health values with debug logging
-            health = game_state.get('stats', {}).get('health', 0)
-            max_health = game_state.get('stats', {}).get('max_health', 0)
+            # Extract health values with debug logging [FIXED 2025-10-15 05:25]
+            # Health is in game_state['player'], not game_state['stats']!
+            health = game_state.get('player', {}).get('health', 0)
+            max_health = game_state.get('player', {}).get('max_health', 0)
             
-            print(f"🔍 DEBUG LLM Prompt: Sending health={health}/{max_health} to LLM")
+            print(f"📤 SENDING TO LLM: health={health}/{max_health} hearts")
             
             # Format prompt with game state
             user_prompt = self.user_prompt_template.format(
@@ -624,11 +626,12 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                 # encode_state returns (vector_obs, structured_state)
                 _, game_state = self.state_encoder.encode_state(self.bridge)
                 
-                # DEBUG: Log actual health values from game state
-                health = game_state.get('stats', {}).get('health', 'MISSING')
-                max_health = game_state.get('stats', {}).get('max_health', 'MISSING')
-                print(f"🔍 DEBUG Health: {health}/{max_health} (from game_state['stats'])")
-                print(f"   Full stats: {game_state.get('stats', 'MISSING')}")
+                # DEBUG: Log actual health values from game state [FIXED 2025-10-15 05:25]
+                # Health is in game_state['player'], not game_state['stats']!
+                health = game_state.get('player', {}).get('health', 'MISSING')
+                max_health = game_state.get('player', {}).get('max_health', 'MISSING')
+                print(f"🩺 HEALTH DEBUG: {health}/{max_health} hearts (from game_state['player'])")
+                print(f"📊 PLAYER DATA: {game_state.get('player', 'MISSING')}")
             else:
                 game_state = {}
                 print(f"⚠️  No state_encoder available!")
@@ -679,8 +682,8 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                                 'episode': self._episode_count,
                                 'location': game_state.get('location', {}).get('name', 'Unknown'),
                                 'room_id': game_state.get('location', {}).get('room', 0),
-                                'health': game_state.get('stats', {}).get('health', 0),
-                                'max_health': game_state.get('stats', {}).get('max_health', 0),
+                                'health': game_state.get('player', {}).get('health', 0),  # Fixed: health is in 'player'
+                                'max_health': game_state.get('player', {}).get('max_health', 0),  # Fixed: health is in 'player'
                             }
                             self.hud_client.update_training_data(hud_training_data)
                         except Exception as e:
