@@ -28,7 +28,7 @@ class HUDClient:
         self.session_id = None
         self.enabled = False
         self.retry_counter = 0  # Track failed registration attempts
-        self.retry_delay = 10   # Wait 10 resets before retrying after 409
+        self.retry_delay = 2    # Wait only 2 resets before retrying after 409 (fast handoff!)
         
         # Connection pooling for faster HTTP requests (keep persistent connections)
         self.session = requests.Session()
@@ -137,11 +137,15 @@ class HUDClient:
                     'session_id': self.session_id,
                     'data': data
                 },
-                timeout=0.5  # Ultra-fast timeout
+                timeout=2  # Reasonable timeout
             )
-            return response.status_code == 200
-        except Exception:
-            return False  # Fail silently
+            success = response.status_code == 200
+            if not success and response.status_code != 403:
+                print(f"⚠️ Training update failed: {response.status_code}")
+            return success
+        except Exception as e:
+            print(f"⚠️ Training update exception: {e}")
+            return False
     
     def update_vision_data(self, image_base64: str, response_time: Optional[float] = None) -> bool:
         """
@@ -165,14 +169,23 @@ class HUDClient:
             if response_time is not None:
                 payload['response_time'] = response_time
             
+            # Debug: Log occasional updates
+            import random
+            if random.random() < 0.05:  # 5% of updates
+                print(f"📤 Sending vision update (image size: {len(image_base64)} chars)")
+            
             response = self.session.post(
                 f"{self.hud_url}/api/update_vision",
                 json=payload,
-                timeout=0.5  # Ultra-fast timeout
+                timeout=2  # Reasonable timeout
             )
-            return response.status_code == 200
-        except Exception:
-            return False  # Fail silently
+            success = response.status_code == 200
+            if not success and response.status_code != 403:
+                print(f"⚠️ Vision update failed: {response.status_code}")
+            return success
+        except Exception as e:
+            print(f"⚠️ Vision update exception: {e}")
+            return False
     
     def close(self):
         """Close the session and cleanup resources"""
