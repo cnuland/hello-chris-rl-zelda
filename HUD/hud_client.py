@@ -105,6 +105,11 @@ class HUDClient:
             return False
         
         try:
+            # Debug: Log occasional training updates
+            import random
+            if random.random() < 0.1:  # 10% of updates
+                print(f"📊 Sending training update (step={data.get('global_step', '?')}, episode={data.get('episode', '?')})")
+            
             response = self.session.post(
                 f"{self.hud_url}/api/update_training",
                 json={
