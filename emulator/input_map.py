@@ -13,8 +13,7 @@ class ZeldaAction(IntEnum):
     RIGHT = 4
     A = 5  # Action button (sword, interact)
     B = 6  # Secondary action (items)
-    START = 7  # Pause menu
-    SELECT = 8  # Item selection
+    START = 7  # Pause menu / change gear
 
 
 # Mapping from action enum to PyBoy WindowEvent
@@ -27,7 +26,6 @@ ACTION_TO_EVENT = {
     ZeldaAction.A: WindowEvent.PRESS_BUTTON_A,
     ZeldaAction.B: WindowEvent.PRESS_BUTTON_B,
     ZeldaAction.START: WindowEvent.PRESS_BUTTON_START,
-    ZeldaAction.SELECT: WindowEvent.PRESS_BUTTON_SELECT,
 }
 
 # Release events for proper button handling
@@ -39,7 +37,6 @@ ACTION_TO_RELEASE = {
     ZeldaAction.A: WindowEvent.RELEASE_BUTTON_A,
     ZeldaAction.B: WindowEvent.RELEASE_BUTTON_B,
     ZeldaAction.START: WindowEvent.RELEASE_BUTTON_START,
-    ZeldaAction.SELECT: WindowEvent.RELEASE_BUTTON_SELECT,
 }
 
 
