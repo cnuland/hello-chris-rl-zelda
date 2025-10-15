@@ -1,6 +1,9 @@
 # Vision LLM Prompt Configuration for Zelda Oracle of Seasons
 # Designed for vision-capable LLMs receiving Game Boy screenshots
 
+# LLM Endpoint Configuration
+llm_endpoint: "http://172.30.21.1:8000/v1/chat/completions"
+
 system_prompt: |
   You are an expert AI analyzing Game Boy gameplay screens for The Legend of Zelda: Oracle of Seasons.
   
