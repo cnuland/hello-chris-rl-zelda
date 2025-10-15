@@ -144,9 +144,12 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                 print("   🧠 Vision LLM: DISABLED (no config)")
                 return
             
-            planner_config = self.config.get('planner_integration', {})
+            # planner_integration is nested under 'performance' in env.yaml
+            perf_config = self.config.get('performance', {})
+            planner_config = perf_config.get('planner_integration', {})
             if not planner_config:
                 print("   🧠 Vision LLM: DISABLED (no planner_integration in config)")
+                print(f"   Debug: performance keys: {list(perf_config.keys()) if perf_config else 'none'}")
                 return
             
             use_planner = planner_config.get('use_planner', False)
@@ -162,29 +165,29 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
             print(f"   ❌ Error checking LLM config: {e}")
             return
         
-        # Load vision prompt configuration
+        # Load vision prompt configuration (check performance section first)
         try:
-            vision_config_path = planner_config.get('vision_prompt_config', 'configs/vision_prompt.yaml')
+            vision_config_path = perf_config.get('vision_prompt_config', planner_config.get('vision_prompt_config', 'configs/vision_prompt.yaml'))
             vision_config_path = self._resolve_path(vision_config_path)
             
             with open(vision_config_path, 'r') as f:
                 vision_config = yaml.safe_load(f)
             
-            # Extract LLM settings
-            self.llm_frequency = planner_config.get('llm_frequency', vision_config.get('behavior', {}).get('call_frequency', 5))
-            self.alignment_bonus_multiplier = planner_config.get('alignment_bonus_multiplier', vision_config.get('behavior', {}).get('alignment_bonus_multiplier', 2.0))
+            # Extract LLM settings (from performance section or planner_config)
+            self.llm_frequency = perf_config.get('llm_frequency', planner_config.get('llm_frequency', vision_config.get('behavior', {}).get('call_frequency', 5)))
+            self.alignment_bonus_multiplier = perf_config.get('alignment_bonus_multiplier', planner_config.get('alignment_bonus_multiplier', vision_config.get('behavior', {}).get('alignment_bonus_multiplier', 2.0)))
             
-            # Extract vision settings
-            self.image_scale = planner_config.get('image_scale', vision_config.get('vision_config', {}).get('image_scale', 2))
-            self.image_quality = planner_config.get('image_quality', vision_config.get('vision_config', {}).get('image_quality', 75))
-            self.image_format = planner_config.get('image_format', vision_config.get('vision_config', {}).get('image_format', 'jpeg'))
+            # Extract vision settings (from performance section or planner_config)
+            self.image_scale = perf_config.get('image_scale', planner_config.get('image_scale', vision_config.get('vision_config', {}).get('image_scale', 2)))
+            self.image_quality = perf_config.get('image_quality', planner_config.get('image_quality', vision_config.get('vision_config', {}).get('image_quality', 75)))
+            self.image_format = perf_config.get('image_format', planner_config.get('image_format', vision_config.get('vision_config', {}).get('image_format', 'jpeg')))
             
             # Store prompts
             self.system_prompt = vision_config.get('system_prompt', '')
             self.user_prompt_template = vision_config.get('vision_user_prompt_template', '')
             
-            # LLM endpoint from environment variable
-            llm_endpoint_var = planner_config.get('llm_endpoint_env_var', 'LLM_ENDPOINT')
+            # LLM endpoint from environment variable (check performance section first)
+            llm_endpoint_var = perf_config.get('llm_endpoint_env_var', planner_config.get('llm_endpoint_env_var', 'LLM_ENDPOINT'))
             self.llm_endpoint = os.environ.get(llm_endpoint_var, '')
             
             if not self.llm_endpoint:
@@ -193,7 +196,7 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                 return
             
             # LLM model name (optional - if empty, don't send model parameter)
-            self.llm_model_name = planner_config.get('llm_model_name', '')
+            self.llm_model_name = perf_config.get('llm_model_name', planner_config.get('llm_model_name', ''))
             
             # LLM Host header (required for some load balancers/ingress controllers)
             self.llm_host_header = os.environ.get('LLM_HOST_HEADER', '')
