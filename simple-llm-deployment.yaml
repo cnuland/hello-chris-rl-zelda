@@ -1,0 +1,208 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: simple-zelda-llm
+  namespace: llm-d
+  labels:
+    app: simple-zelda-llm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: simple-zelda-llm
+  template:
+    metadata:
+      labels:
+        app: simple-zelda-llm
+    spec:
+      containers:
+      - name: ollama-llm
+        image: ollama/ollama:latest
+        ports:
+        - containerPort: 11434
+          name: ollama
+        env:
+        - name: OLLAMA_HOST
+          value: "0.0.0.0:11434"
+        resources:
+          limits:
+            memory: "8Gi"
+            cpu: "4"
+          requests:
+            memory: "4Gi" 
+            cpu: "2"
+        readinessProbe:
+          httpGet:
+            path: /api/tags
+            port: 11434
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        volumeMounts:
+        - mountPath: /root/.ollama
+          name: ollama-storage
+      initContainers:
+      - name: model-puller
+        image: curlimages/curl:latest
+        command:
+        - sh
+        - -c 
+        - |
+          echo "Waiting for Ollama to be ready..."
+          sleep 60
+          curl -X POST http://localhost:11434/api/pull -d '{"name":"llama3.2:1b"}'
+        volumeMounts:
+        - mountPath: /root/.ollama
+          name: ollama-storage
+      volumes:
+      - name: ollama-storage
+        emptyDir:
+          sizeLimit: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: simple-zelda-llm-service
+  namespace: llm-d
+  labels:
+    app: simple-zelda-llm
+spec:
+  type: ClusterIP
+  ports:
+  - port: 11434
+    targetPort: 11434
+    protocol: TCP
+    name: ollama
+  selector:
+    app: simple-zelda-llm
+---
+# OpenAI-compatible API wrapper service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ollama-openai-adapter
+  namespace: llm-d
+  labels:
+    app: ollama-openai-adapter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ollama-openai-adapter
+  template:
+    metadata:
+      labels:
+        app: ollama-openai-adapter
+    spec:
+      containers:
+      - name: adapter
+        image: python:3.11-slim
+        ports:
+        - containerPort: 8000
+          name: api
+        env:
+        - name: OLLAMA_URL
+          value: "http://simple-zelda-llm-service.llm-d.svc.cluster.local:11434"
+        command:
+        - sh
+        - -c
+        - |
+          pip install fastapi uvicorn requests
+          cat > /app/adapter.py << 'EOF'
+          from fastapi import FastAPI, HTTPException
+          from pydantic import BaseModel
+          import requests
+          import json
+          import os
+          
+          app = FastAPI()
+          OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
+          
+          class ChatMessage(BaseModel):
+              role: str
+              content: str
+          
+          class ChatRequest(BaseModel):
+              model: str = "llama3.2:1b"
+              messages: list[ChatMessage]
+              max_tokens: int = 50
+              temperature: float = 0.7
+          
+          class ChatResponse(BaseModel):
+              choices: list
+          
+          @app.get("/v1/models")
+          async def list_models():
+              return {"data": [{"id": "llama3.2:1b", "object": "model"}]}
+          
+          @app.post("/v1/chat/completions")
+          async def chat_completions(request: ChatRequest):
+              try:
+                  # Convert to Ollama format
+                  prompt = "\n".join([f"{msg.role}: {msg.content}" for msg in request.messages])
+                  
+                  ollama_request = {
+                      "model": "llama3.2:1b",
+                      "prompt": prompt + "\nassistant:",
+                      "stream": False,
+                      "options": {
+                          "temperature": request.temperature,
+                          "num_predict": request.max_tokens
+                      }
+                  }
+                  
+                  response = requests.post(f"{OLLAMA_URL}/api/generate", json=ollama_request, timeout=30)
+                  
+                  if response.status_code != 200:
+                      raise HTTPException(status_code=500, detail="Ollama request failed")
+                  
+                  ollama_response = response.json()
+                  content = ollama_response.get("response", "").strip()
+                  
+                  return {
+                      "choices": [{
+                          "message": {
+                              "role": "assistant", 
+                              "content": content
+                          },
+                          "finish_reason": "stop"
+                      }]
+                  }
+              except Exception as e:
+                  raise HTTPException(status_code=500, detail=str(e))
+          
+          @app.get("/health")
+          async def health():
+              return {"status": "healthy"}
+          EOF
+          
+          cd /app && uvicorn adapter:app --host 0.0.0.0 --port 8000
+        resources:
+          limits:
+            memory: "1Gi"
+            cpu: "1"
+          requests:
+            memory: "512Mi"
+            cpu: "0.5"
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: zelda-llm-api-service
+  namespace: llm-d
+  labels:
+    app: ollama-openai-adapter
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8000
+    targetPort: 8000
+    protocol: TCP
+    name: api
+  selector:
+    app: ollama-openai-adapter

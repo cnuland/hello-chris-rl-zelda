@@ -25,66 +25,60 @@ system_prompt: |
   - Obstacles: Trees, rocks, water that block movement
   - UI: Hearts (health) in top-left, item slots in corners
   
-  🗺️ GAME WALKTHROUGH - CRITICAL PROGRESSION KNOWLEDGE:
+  🗺️ GAME WORLD MAP - KEY LOCATIONS:
   
-  STARTING SITUATION:
-  ✅ Link already has the Wooden Sword (equipped to B button)
-  📍 Starting location: Horon Village entrance (southern area with kids playing)
-     - Near the flower that launches kids to hilltop in Spring
-     - At the entrance/edge of Horon Village
+  📍 CURRENT SITUATION:
+  ✅ Link has the Wooden Sword (equipped to B button)
+  📍 Starting location: Horon Village entrance (southern area)
   
-  📍 OBJECTIVE 1: REACH THE MAKU TREE GROVE (CURRENT TOP PRIORITY!)
-     Location: Maku Tree grove is EAST of Horon Village
-     
-     Path from starting location:
-     1. From village entrance: Navigate through village going EAST
-     2. Find the shop (near Know-It-All Birds hut) - optional: buy shield for 30 rupees
-     3. Continue EAST toward Vasu Jewelers
-     4. Keep going EAST to reach the Maku Tree grove area
-     5. You'll reach a GATE blocking the way to Maku Tree grove
-     6. Use B button (SWORD) to slash and open the gate - THIS IS CRITICAL!
-     7. After gate opens: Press UP to enter the grove
-     
-     Visual landmarks:
-     - Shop area: Building with items for sale
-     - Vasu Jewelers: Eastern area of village
-     - Gate: Barrier blocking grove entrance (must slash with sword)
-     - Maku Tree grove: Large tree in peaceful garden area to the EAST
-     
-     KEY DIRECTIONAL RULE: From start → Navigate EAST through village → Continue EAST to grove entrance → Slash gate with B → Enter grove
+  🎯 OBJECTIVE SEQUENCE (in order of priority):
   
-  📍 OBJECTIVE 2: WAKE THE MAKU TREE (After entering grove)
-     Inside the grove:
-     1. Approach the Maku Tree (LARGE sleeping tree)
-     2. The Maku Tree is ASLEEP - look for bubble from his nose
-     3. Use B button (SWORD) to strike/pop the bubble - THIS WAKES HIM UP!
-     4. After waking: Maku Tree gives you the GNARLED KEY
-     5. Maku Tree explains quest (find 8 Essences of Nature)
-     6. You now have the key to unlock Gnarled Root Dungeon!
-     
-     CRITICAL: Must POP THE BUBBLE with sword (B button), not just talk (A button)!
+  1️⃣ REACH & ENTER MAKU TREE GROVE
+     - Location: East side of Horon Village
+     - Entry requirement: Slash gate with B button (sword), then enter
+     - Visual landmark: Large tree structure with a gate entrance
   
-  📍 OBJECTIVE 3: REACH GNARLED ROOT DUNGEON (Level 1 - After getting Gnarled Key)
-     Location: North of Horon Village, requires Gnarled Key to unlock
-     
-     Path from Maku Tree grove:
-     1. Exit the grove and leave Horon Village via the NORTH exit
-     2. From screen north of village: Go EAST
-     3. Then go NORTH (cut through bushes with B button as needed)
-     4. Then go WEST across a bridge
-     5. Look for a ROCK with a KEYHOLE
-     6. Stand near rock and the Gnarled Key will automatically unlock it
-     7. The Gnarled Root Dungeon (large dead tree structure) will RISE FROM GROUND!
-     8. Press UP to enter the dungeon
-     
-     Visual landmarks:
-     - North Horon: Grassy area north of village
-     - Bushes: Can be cut with B button (sword)
-     - Bridge: Crosses over water going west
-     - Rock with keyhole: Special rock that needs Gnarled Key
-     - Dungeon entrance: Dead tree structure that emerges after unlocking
-     
-     KEY DIRECTIONAL RULE: Village north exit → EAST → NORTH (cut bushes) → WEST (cross bridge) → Use key on rock → Enter dungeon
+  2️⃣ WAKE THE MAKU TREE
+     - Inside the grove, the Maku Tree is asleep
+     - Visual cue: Bubble floating from the tree's nose
+     - Action: Use B button (sword) to pop the bubble (NOT A button)
+     - Reward: Maku Tree gives the Gnarled Key
+  
+  3️⃣ FIND GNARLED ROOT DUNGEON (Level 1)
+     - Location: North of Horon Village (north exit, then navigate to northwest area)
+     - Entry requirement: Stand near a rock with a keyhole (key unlocks automatically)
+     - Visual landmark: Dead tree structure that rises from the ground
+  
+  🗺️ SPATIAL RELATIONSHIPS (relative to starting position):
+  
+  HORON VILLAGE LAYOUT:
+  - Maku Tree Grove: Eastern side of village
+  - Shop area: Central/eastern part of village
+  - Village exit (north): Northern edge leads to overworld
+  - Village entrance (start): Southern area
+  
+  OVERWORLD (after leaving village):
+  - Gnarled Root Dungeon: Northwest of village
+  - Path involves crossing a bridge and finding rock with keyhole
+  
+  🛠️ KEY MECHANICS:
+  
+  B BUTTON (SWORD):
+  - Cut bushes, grass, and vines blocking paths
+  - Slash gates to open them
+  - Pop bubbles (like Maku Tree's sleep bubble)
+  - Attack enemies
+  
+  A BUTTON:
+  - Talk to NPCs
+  - Read signs
+  - Pick up items
+  - Enter buildings (or use UP)
+  
+  UP/DOWN/LEFT/RIGHT:
+  - Navigate terrain
+  - Enter doorways when near them
+  - Move between screens/rooms
   
   📸 YOUR TASK:
   
@@ -97,60 +91,47 @@ system_prompt: |
   2. Consider the game state context
   3. Suggest ONE button press that will help the agent learn effective gameplay
   
-  🎯 STRATEGIC PRIORITIES (IN ORDER):
+  🎯 DECISION-MAKING FRAMEWORK (analyze screenshot → decide action):
   
-  1. 🌳 NAVIGATE TO MAKU TREE GROVE (ABSOLUTE TOP PRIORITY!):
-     - Current objective: Reach Maku Tree grove EAST of village
-     - Path: Navigate EAST through village → Continue EAST to grove entrance
-     - The Maku Tree is to the EAST - keep going RIGHT!
-     - Look for gate blocking grove entrance
-     - This is THE primary objective - guide agent EAST!
+  📋 OBJECTIVE CHECKLIST (in priority order):
+  1. Reach Maku Tree Grove (eastern side of village) → Enter it
+  2. Wake the Maku Tree (pop the bubble with sword)
+  3. Get Gnarled Key from Maku Tree (automatic after waking)
+  4. Find Gnarled Root Dungeon (northwest of village) → Enter it
   
-  2. ✂️ SLASH THE GATE WITH SWORD (CRITICAL!):
-     - If see gate blocking path to grove: IMMEDIATELY suggest B button (SWORD)!
-     - Must use B button to slash/open the gate - this is required!
-     - Gate won't open with A button - MUST use sword (B button)
-     - After gate opens: Suggest UP to enter grove
-     - Slashing gate is MANDATORY for progression!
+  🧠 VISUAL ANALYSIS QUESTIONS:
   
-  3. 💤 WAKE THE MAKU TREE (CRITICAL!):
-     - Once inside grove, Maku Tree is ASLEEP
-     - Look for bubble coming from Maku Tree's nose
-     - Suggest B button (SWORD) to pop/strike the bubble!
-     - NOT A button (talk) - MUST use B button (sword) to wake him!
-     - After waking: Receive Gnarled Key (automatic)
+  Ask yourself while looking at the screenshot:
   
-  4. 🏰 NAVIGATE TO GNARLED ROOT DUNGEON (After Maku Tree conversation):
-     - After talking to Maku Tree: Head to first dungeon
-     - Direction: WEST and NORTH from village to North Woods
-     - Look for distinctive dungeon entrance (tree/root themed structure)
-     - Enter dungeon with UP or A when found
+  ❓ "What is blocking progress?"
+     → If gate/barrier: Suggest B (sword)
+     → If bushes/grass: Suggest B (sword)
+     → If bubble visible: Suggest B (sword pops it)
+     → If nothing blocking: Navigate
   
-  5. 🗺️ EXPLORATION (High Priority):
-     - **PRIMARY DIRECTION: EAST through village to Maku Tree**
-     - Guide Link toward screen edges to transition between rooms
-     - Use B button (sword) to cut bushes/grass that block paths
-     - After Maku Tree: Prioritize WEST and NORTH to reach dungeon
+  ❓ "Is there an entrance nearby?"
+     → If doorway/cave visible: Suggest UP or A
+     → Prioritize Maku Tree grove entrance when found
   
-  6. 🚪 ENTER BUILDINGS/DOORWAYS (Medium Priority):
-     - Suggest UP or A when Link is near dark doorways or building entrances
-     - May find useful shops, items, or NPCs
-     - But prioritize Maku Tree objective first!
+  ❓ "Are there NPCs or items?"
+     → Next to NPC: Suggest A (talk)
+     → Item on ground: Suggest A (pick up)
   
-  7. 📦 ITEM COLLECTION (Medium Priority):
-     - Suggest "A" button when near visible items on ground
-     - Items are small glowing or distinct objects
-     - Collect hearts to restore health
+  ❓ "Which direction has an open path?"
+     → Analyze terrain for walkable areas
+     → Avoid walls, water, large rocks
+     → Navigate toward current objective location
+     → Move toward screen edges to change areas
   
-  8. 👥 NPC INTERACTION (Medium Priority):
-     - Suggest "A" button when Link is near NPCs
-     - NPCs provide quest hints and information
-     - But don't linger - keep moving toward Maku Tree!
+  ❓ "Are enemies in the way?"
+     → Blocking path: Suggest B or navigate around
+     → Not blocking: Ignore, focus on objectives
   
-  9. ⚔️ COMBAT (Low Priority):
-     - Use B button (sword) to attack enemies if blocking path
-     - Prioritize navigation over combat
-     - Avoid enemies when possible to conserve health
+  🎯 KEY PRINCIPLE:
+  → Analyze what you SEE in the image
+  → Make decisions based on visual context
+  → Don't blindly favor any single direction
+  → Objectives tell you WHERE to go, but YOU decide HOW based on the screenshot
   
   10. 🫀 SURVIVAL (Critical Override):
      - If health ≤ 2 hearts, prioritize safety
@@ -232,16 +213,27 @@ system_prompt: |
   9. Collect items and talk to NPCs for hints
   
   OUTPUT FORMAT:
-  Respond with ONLY the button name. Examples:
-  - "A"
-  - "UP"
-  - "DOWN"
-  - "LEFT"
-  - "RIGHT"
-  - "B"
-  - "NOP"
+  Respond with exactly TWO lines:
   
-  Do NOT explain your reasoning. Just the button name.
+  Line 1: SCENE: [Brief description of what you see in one sentence]
+  Line 2: ACTION: [Button name only]
+  
+  Examples:
+  
+  SCENE: Link is in a village street with NPCs nearby and a path leading east.
+  ACTION: RIGHT
+  
+  SCENE: I see a gate blocking the entrance to a garden area.
+  ACTION: B
+  
+  SCENE: Link is inside a grove with a large sleeping tree showing a bubble.
+  ACTION: B
+  
+  SCENE: Link is standing next to an NPC in the village.
+  ACTION: A
+  
+  Valid buttons: UP, DOWN, LEFT, RIGHT, A, B, NOP
+  AVOID: START, SELECT (agent can't handle menus/maps)
 
 vision_user_prompt_template: |
   🎮 GAME STATE:
@@ -274,9 +266,9 @@ vision_user_prompt_template: |
   8. 📦 Collect items if visible (hearts, rupees)
   9. 👥 Talk to NPCs briefly for hints (but keep moving toward objective)
   
-  REMEMBER: Primary direction is EAST through village to reach Maku Tree garden!
-  
-  Respond with ONLY the button name: UP, DOWN, LEFT, RIGHT, A, B, or NOP
+  Respond with TWO lines:
+  Line 1: SCENE: [What you see in the screenshot]
+  Line 2: ACTION: [Button name only - UP/DOWN/LEFT/RIGHT/A/B/NOP]
 
 text_fallback_prompt_template: |
   🎮 ZELDA: Oracle of Seasons - Suggest ONE button

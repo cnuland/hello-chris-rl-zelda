@@ -1,0 +1,208 @@
+apiVersion: ray.io/v1
+kind: RayCluster
+metadata:
+  name: zelda-rl
+  namespace: zelda-hybrid-rl-llm
+  labels:
+    kueue.x-k8s.io/queue-name: zelda-ray-queue
+spec:
+  rayVersion: '2.9.0'
+  enableInTreeAutoscaling: false
+  suspend: false
+  headGroupSpec:
+    rayStartParams: {}
+    template:
+      spec:
+        serviceAccountName: zelda-rl-oauth-proxy
+        nodeSelector:
+          node.kubernetes.io/instance-type: c7a.16xlarge
+        tolerations:
+        - key: high-cpu
+          operator: Equal
+          value: "true"
+          effect: NoSchedule
+        initContainers:
+        - name: create-cert
+          image: registry.redhat.io/ubi9@sha256:770cf07083e1c85ae69c25181a205b7cdef63c11b794c89b3b487d4670b4c328
+          command:
+          - sh
+          - -c
+          - |
+            cd /home/ray/workspace/tls && \
+            openssl req -nodes -newkey rsa:2048 -keyout server.key -out server.csr -subj '/CN=ray-head' && \
+            printf "authorityKeyIdentifier=keyid,issuer\nbasicConstraints=CA:FALSE\nsubjectAltName = @alt_names\n[alt_names]\nDNS.1 = 127.0.0.1\nDNS.2 = localhost\nDNS.3 = \${FQ_RAY_IP}\nDNS.4 = $(awk 'END{print $1}' /etc/hosts)\nDNS.5 = rayclient-zelda-rl-zelda-hybrid-rl-llm.apps.rosa.rosa-58cx6.acrs.p3.openshiftapps.com\nDNS.6 = zelda-rl-head-svc.zelda-hybrid-rl-llm.svc" > ./domain.ext && \
+            cp /home/ray/workspace/ca/* . && \
+            openssl x509 -req -CA ca.crt -CAkey ca.key -in server.csr -out server.crt -days 365 -CAcreateserial -extfile domain.ext
+          volumeMounts:
+          - mountPath: /home/ray/workspace/ca
+            name: ca-vol
+            readOnly: true
+          - mountPath: /home/ray/workspace/tls
+            name: server-cert
+        containers:
+        - name: ray-head
+          image: quay.io/cnuland/dd-kuberay-worker:latest
+          imagePullPolicy: Always
+          env:
+          - name: RAY_WORKERS
+            value: "24"
+          - name: ENVS_PER_WORKER
+            value: "12"
+          - name: EPISODE_LENGTH
+            value: "61440"
+          - name: BATCH_SIZE
+            value: "32768"
+          - name: HUD_URL
+            value: "http://zelda-hud-service.zelda-hybrid-rl-llm.svc.cluster.local:8086"
+          - name: MY_POD_IP
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
+          - name: RAY_USE_TLS
+            value: "1"
+          - name: RAY_TLS_SERVER_CERT
+            value: /home/ray/workspace/tls/server.crt
+          - name: RAY_TLS_SERVER_KEY
+            value: /home/ray/workspace/tls/server.key
+          - name: RAY_TLS_CA_CERT
+            value: /home/ray/workspace/tls/ca.crt
+          ports:
+          - containerPort: 6379
+            name: gcs-server
+            protocol: TCP
+          - containerPort: 8265
+            name: dashboard
+            protocol: TCP
+          - containerPort: 10001
+            name: client
+            protocol: TCP
+          volumeMounts:
+          - mountPath: /home/ray/workspace/ca
+            name: ca-vol
+            readOnly: true
+          - mountPath: /home/ray/workspace/tls
+            name: server-cert
+          resources:
+            requests:
+              cpu: "20"       # Reasonable head node allocation
+              memory: "40Gi"
+            limits:
+              cpu: "24"       # Allow burst capability
+              memory: "48Gi"
+        - name: oauth-proxy
+          args:
+          - --https-address=:8443
+          - --provider=openshift
+          - --openshift-service-account=zelda-rl-oauth-proxy
+          - --upstream=http://localhost:8265
+          - --tls-cert=/etc/tls/private/tls.crt
+          - --tls-key=/etc/tls/private/tls.key
+          - --cookie-secret=$(COOKIE_SECRET)
+          - --openshift-delegate-urls={"/":{"resource":"pods","namespace":"zelda-hybrid-rl-llm","verb":"get"}}
+          env:
+          - name: COOKIE_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: zelda-rl-oauth-config
+                key: cookie_secret
+          image: registry.redhat.io/openshift4/ose-oauth-proxy@sha256:1ea6a01bf3e63cdcf125c6064cbd4a4a270deaf0f157b3eabb78f60556840366
+          ports:
+          - containerPort: 8443
+            name: oauth-proxy
+            protocol: TCP
+          resources: {}
+          volumeMounts:
+          - mountPath: /etc/tls/private
+            name: proxy-tls-secret
+            readOnly: true
+        volumes:
+        - name: proxy-tls-secret
+          secret:
+            secretName: zelda-rl-proxy-tls-secret
+        - name: ca-vol
+          secret:
+            secretName: ca-secret-zelda-rl
+        - name: server-cert
+          emptyDir: {}
+  workerGroupSpecs:
+  - groupName: high-performance-workers
+    numOfHosts: 1
+    minReplicas: 2
+    maxReplicas: 2
+    replicas: 2
+    rayStartParams: {}
+    scaleStrategy: {}
+    template:
+      spec:
+        serviceAccountName: zelda-rl-training
+        nodeSelector:
+          node.kubernetes.io/instance-type: c7a.16xlarge
+        tolerations:
+        - key: high-cpu
+          operator: Equal
+          value: "true"
+          effect: NoSchedule
+        initContainers:
+        - name: create-cert
+          image: registry.redhat.io/ubi9@sha256:770cf07083e1c85ae69c25181a205b7cdef63c11b794c89b3b487d4670b4c328
+          command:
+          - sh
+          - -c
+          - |
+            cd /home/ray/workspace/tls && \
+            openssl req -nodes -newkey rsa:2048 -keyout server.key -out server.csr -subj '/CN=ray-head' && \
+            printf "authorityKeyIdentifier=keyid,issuer\nbasicConstraints=CA:FALSE\nsubjectAltName = @alt_names\n[alt_names]\nDNS.1 = 127.0.0.1\nDNS.2 = localhost\nDNS.3 = \${FQ_RAY_IP}\nDNS.4 = $(awk 'END{print $1}' /etc/hosts)" > ./domain.ext && \
+            cp /home/ray/workspace/ca/* . && \
+            openssl x509 -req -CA ca.crt -CAkey ca.key -in server.csr -out server.crt -days 365 -CAcreateserial -extfile domain.ext
+          volumeMounts:
+          - mountPath: /home/ray/workspace/ca
+            name: ca-vol
+            readOnly: true
+          - mountPath: /home/ray/workspace/tls
+            name: server-cert
+        containers:
+        - name: ray-worker
+          image: quay.io/cnuland/dd-kuberay-worker:latest
+          imagePullPolicy: Always
+          env:
+          - name: RAY_WORKERS
+            value: "24"
+          - name: ENVS_PER_WORKER
+            value: "12"
+          - name: EPISODE_LENGTH
+            value: "61440"
+          - name: BATCH_SIZE
+            value: "32768"
+          - name: HUD_URL
+            value: "http://zelda-hud-service.zelda-hybrid-rl-llm.svc.cluster.local:8086"
+          - name: MY_POD_IP
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
+          - name: RAY_USE_TLS
+            value: "1"
+          - name: RAY_TLS_SERVER_CERT
+            value: /home/ray/workspace/tls/server.crt
+          - name: RAY_TLS_SERVER_KEY
+            value: /home/ray/workspace/tls/server.key
+          - name: RAY_TLS_CA_CERT
+            value: /home/ray/workspace/tls/ca.crt
+          volumeMounts:
+          - mountPath: /home/ray/workspace/ca
+            name: ca-vol
+            readOnly: true
+          - mountPath: /home/ray/workspace/tls
+            name: server-cert
+          resources:
+            requests:
+              cpu: "40"       # Sized to fit 2 per 3-node cluster
+              memory: "60Gi"  # Conservative but substantial memory
+            limits:
+              cpu: "48"       # Allow burst capability  
+              memory: "80Gi"
+        volumes:
+        - name: ca-vol
+          secret:
+            secretName: ca-secret-zelda-rl
+        - name: server-cert
+          emptyDir: {}

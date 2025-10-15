@@ -452,8 +452,12 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
             print(f"⚠️  Screenshot capture failed: {e}")
             return None
     
-    def call_llm_vision(self, game_state: Dict, screenshot_base64: Optional[str] = None) -> Optional[str]:
-        """Call vision LLM with screenshot and game state."""
+    def call_llm_vision(self, game_state: Dict, screenshot_base64: Optional[str] = None) -> Optional[Dict[str, str]]:
+        """Call vision LLM with screenshot and game state.
+        
+        Returns:
+            Dict with 'scene' (description) and 'action' (button), or None if failed
+        """
         if not self.llm_enabled or not screenshot_base64:
             return None
         
@@ -494,7 +498,7 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                         ]
                     }
                 ],
-                "max_tokens": 100,
+                "max_tokens": 150,  # Increased for scene description + action
                 "temperature": 0.7
             }
             
@@ -517,8 +521,39 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
             
             if response.status_code == 200:
                 result = response.json()
-                suggestion = result.get('choices', [{}])[0].get('message', {}).get('content', '').strip()
-                return suggestion if suggestion else None
+                raw_response = result.get('choices', [{}])[0].get('message', {}).get('content', '').strip()
+                
+                if not raw_response:
+                    return None
+                
+                # Parse response (expecting two lines: SCENE: ... and ACTION: ...)
+                scene_desc = ""
+                action = ""
+                
+                lines = raw_response.split('\n')
+                for line in lines:
+                    line = line.strip()
+                    if line.startswith('SCENE:'):
+                        scene_desc = line.replace('SCENE:', '').strip()
+                    elif line.startswith('ACTION:'):
+                        action = line.replace('ACTION:', '').strip()
+                
+                # Fallback: if no structured format, try to extract action from anywhere
+                if not action:
+                    # Look for button names in the response
+                    for button in ["UP", "DOWN", "LEFT", "RIGHT", "A", "B", "NOP"]:
+                        if button in raw_response.upper():
+                            action = button
+                            break
+                
+                # If we have at least an action, return it
+                if action:
+                    return {
+                        'scene': scene_desc if scene_desc else raw_response[:100],  # Use full response as scene if not parsed
+                        'action': action
+                    }
+                
+                return None
             else:
                 # Log detailed error for debugging
                 error_msg = f"⚠️  LLM returned status {response.status_code}"
@@ -591,19 +626,28 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
             if screenshot:
                 # Call vision LLM
                 llm_start_time = time.time()
-                llm_suggestion = self.call_llm_vision(game_state, screenshot)
+                llm_result = self.call_llm_vision(game_state, screenshot)
                 llm_response_time = (time.time() - llm_start_time) * 1000  # Convert to ms
                 
-                if llm_suggestion:
+                if llm_result:
                     self.llm_call_count += 1
                     self.llm_success_count += 1
-                    self.last_llm_suggestion = llm_suggestion
+                    
+                    # Extract scene description and action
+                    scene_desc = llm_result.get('scene', '')
+                    llm_action = llm_result.get('action', '')
+                    
+                    self.last_llm_suggestion = llm_action  # Store action for HUD
+                    
+                    # Log what the LLM sees and suggests
+                    print(f"👁️  LLM SEES: {scene_desc}")
+                    print(f"💡 LLM SUGGESTS: {llm_action}")
                     
                     # Compute alignment bonus
-                    llm_bonus = self.compute_llm_alignment_bonus(action, llm_suggestion)
+                    llm_bonus = self.compute_llm_alignment_bonus(action, llm_action)
                     
                     if llm_bonus > 0:
-                        print(f"📸 LLM suggested: {llm_suggestion[:50]}... → Action {action} = +{llm_bonus:.1f} bonus!")
+                        print(f"✅ PPO action {action} MATCHES LLM → +{llm_bonus:.1f} bonus!")
                     
                     # Send to HUD (same snapshot LLM sees!)
                     if self.hud_client and self.hud_client.enabled:
@@ -613,7 +657,8 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                             
                             # Send training data (game state)
                             hud_training_data = {
-                                'llm_suggestion': llm_suggestion,
+                                'llm_suggestion': llm_action,  # The action LLM suggested
+                                'llm_scene_description': scene_desc,  # What LLM saw
                                 'llm_calls': self.llm_call_count,
                                 'llm_success_rate': self.llm_success_count / max(self.llm_call_count, 1),
                                 'alignment_bonus': llm_bonus,

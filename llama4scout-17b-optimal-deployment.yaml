@@ -1,0 +1,272 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: llama4scout-pd-sa
+  namespace: llm-d
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: llama4scout-model-access
+rules:
+- apiGroups: [""]
+  resources: ["pods", "services", "endpoints"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "replicasets"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: llama4scout-model-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: llama4scout-model-access
+subjects:
+- kind: ServiceAccount
+  name: llama4scout-pd-sa
+  namespace: llm-d
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llama4scout-17b-decode
+  namespace: llm-d
+  labels:
+    app: llama4scout-17b-decode
+    llm-d.ai/inferenceServing: "true"
+    llm-d.ai/model: llama4scout
+    llm-d.ai/role: decode
+spec:
+  replicas: 2  # Deploy 2 replicas for redundancy (each using single GPU)
+  selector:
+    matchLabels:
+      app: llama4scout-17b-decode
+  template:
+    metadata:
+      labels:
+        app: llama4scout-17b-decode
+        llm-d.ai/inferenceServing: "true"
+        llm-d.ai/model: llama4scout
+        llm-d.ai/role: decode
+    spec:
+      serviceAccountName: llama4scout-pd-sa
+      nodeSelector:
+        node.kubernetes.io/instance-type: g5.2xlarge  # Target GPU nodes
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values: ["llama4scout-17b-decode"]
+              topologyKey: kubernetes.io/hostname
+      containers:
+      - name: vllm
+        image: ghcr.io/llm-d/llm-d:v0.2.0
+        command:
+        - python
+        - -m
+        - vllm.entrypoints.openai.api_server
+        args:
+        - --model=microsoft/Phi-3.5-vision-instruct  # Vision-capable model that fits on single GPU
+        - --host=0.0.0.0
+        - --port=8000
+        - --enable-prefix-caching
+        - --block-size=16
+        - --gpu-memory-utilization=0.9   # More aggressive memory usage
+        - --max-model-len=4096           # Optimized for single GPU
+        - --disable-log-requests
+        - --kv-cache-dtype=auto
+        - --max-num-seqs=128             # Optimized for performance
+        - --trust-remote-code
+        env:
+        - name: CUDA_VISIBLE_DEVICES
+          value: "0"
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: llm-d-hf-token
+              key: HF_TOKEN
+              optional: true
+        - name: PYTHONHASHSEED
+          value: "42"
+        - name: VLLM_LOGGING_LEVEL
+          value: "INFO"
+        - name: HF_HOME
+          value: "/tmp/huggingface"
+        - name: TRANSFORMERS_CACHE
+          value: "/tmp/huggingface/transformers"
+        - name: PYTORCH_CUDA_ALLOC_CONF
+          value: "max_split_size_mb:512"
+        ports:
+        - containerPort: 8000
+          protocol: TCP
+        resources:
+          limits:
+            cpu: "7"              # Max out g5.2xlarge CPU (8 vCPU - 1 for system)
+            memory: "30Gi"        # Max out g5.2xlarge memory (32GB - 2GB for system)
+            nvidia.com/gpu: "1"   # Single A10G GPU per pod
+          requests:
+            cpu: "6"
+            memory: "24Gi"
+            nvidia.com/gpu: "1"
+        volumeMounts:
+        - mountPath: /tmp/huggingface
+          name: cache-volume
+        - mountPath: /dev/shm
+          name: shm
+        readinessProbe:
+          httpGet:
+            path: /v1/models
+            port: 8000
+          initialDelaySeconds: 180  # Allow time for model loading
+          periodSeconds: 30
+          timeoutSeconds: 15
+          failureThreshold: 10
+        livenessProbe:
+          httpGet:
+            path: /v1/models
+            port: 8000
+          initialDelaySeconds: 300  # Allow extra time for model loading
+          periodSeconds: 60
+          timeoutSeconds: 15
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /v1/models
+            port: 8000
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 15
+          failureThreshold: 20   # Allow up to 10 minutes for startup
+      volumes:
+      - name: cache-volume
+        emptyDir:
+          sizeLimit: 80Gi        # Large cache for model and tokenizer
+      - name: shm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 8Gi         # Large shared memory for GPU operations
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: llama4scout-17b-decode
+  namespace: llm-d
+  labels:
+    app: llama4scout-17b-decode
+    llm-d.ai/inferenceServing: "true"
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8000
+    targetPort: 8000
+    protocol: TCP
+    name: http
+  selector:
+    app: llama4scout-17b-decode
+---
+# Load balancer/gateway for the distributed deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm-d-infra-inference-gateway-istio
+  namespace: llm-d
+  labels:
+    app: llm-d-infra-inference-gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: llm-d-infra-inference-gateway
+  template:
+    metadata:
+      labels:
+        app: llm-d-infra-inference-gateway
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: nginx-config
+          mountPath: /etc/nginx/nginx.conf
+          subPath: nginx.conf
+        resources:
+          limits:
+            cpu: "1"
+            memory: "512Mi"
+          requests:
+            cpu: "0.5"
+            memory: "256Mi"
+      volumes:
+      - name: nginx-config
+        configMap:
+          name: llm-gateway-config
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: llm-gateway-config
+  namespace: llm-d
+data:
+  nginx.conf: |
+    events {
+        worker_connections 1024;
+    }
+    
+    upstream llm_backend {
+        least_conn;
+        server llama4scout-17b-decode.llm-d.svc.cluster.local:8000;
+    }
+    
+    server {
+        listen 80;
+        location / {
+            proxy_pass http://llm_backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_connect_timeout 30s;
+            proxy_send_timeout 60s;
+            proxy_read_timeout 60s;
+        }
+        
+        location /health {
+            return 200 "healthy\n";
+            add_header Content-Type text/plain;
+        }
+    }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: llm-d-infra-inference-gateway-istio
+  namespace: llm-d
+  labels:
+    app: llm-d-infra-inference-gateway
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 80
+    protocol: TCP
+    name: http
+  - port: 15021
+    targetPort: 15021
+    protocol: TCP
+    name: status-port
+  selector:
+    app: llm-d-infra-inference-gateway

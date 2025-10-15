@@ -2,7 +2,7 @@
 Ray RLlib Training Script for Zelda Oracle of Seasons
 Uses vector observations + vision LLM (matches existing hybrid approach)
 
-Cache bust: 2025-10-15 04:30 - Fix prompt: Maku Tree is EAST not NORTH
+Cache bust: 2025-10-15 04:45 - LLM now describes what it sees + suggests action
 """
 
 from pathlib import Path
