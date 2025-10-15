@@ -172,8 +172,8 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         print(f"   Action space: {self.action_space}")
         if self.llm_enabled:
             print(f"   🧠 LLM Guidance: ENABLED")
-            print(f"      💬 Text-only calls: every {self.llm_text_frequency} steps (fast!)")
-            print(f"      📸 Vision calls: every {self.llm_vision_frequency} steps (with screenshot)")
+            print(f"      💬 Text-only calls: every {self.llm_text_frequency} steps → +{self.text_alignment_bonus} reward")
+            print(f"      📸 Vision calls: every {self.llm_vision_frequency} steps → +{self.vision_alignment_bonus} reward (10x!)")
             print(f"      🖼️  Image: {160*self.image_scale}×{144*self.image_scale}, {self.image_quality}% JPEG")
         if hasattr(self, 'hud_client') and self.hud_client and self.hud_client.enabled:
             print(f"   🖥️  HUD Client: ENABLED")
@@ -245,7 +245,16 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                 self.llm_vision_frequency = legacy_freq * 10  # Vision is 10x less frequent
             
             self.hud_update_frequency = perf_config.get('hud_update_frequency', planner_config.get('hud_update_frequency', 3))  # HUD updates more frequently than LLM
-            self.alignment_bonus_multiplier = perf_config.get('alignment_bonus_multiplier', planner_config.get('alignment_bonus_multiplier', vision_config.get('behavior', {}).get('alignment_bonus_multiplier', 2.0)))
+            
+            # Alignment rewards (separate for text vs vision)
+            self.text_alignment_bonus = perf_config.get('text_alignment_bonus', planner_config.get('text_alignment_bonus', 5.0))
+            self.vision_alignment_bonus = perf_config.get('vision_alignment_bonus', planner_config.get('vision_alignment_bonus', 50.0))
+            
+            # Legacy support: if old alignment_bonus_multiplier exists, use it for both
+            if 'alignment_bonus_multiplier' in perf_config or 'alignment_bonus_multiplier' in planner_config:
+                legacy_bonus = perf_config.get('alignment_bonus_multiplier', planner_config.get('alignment_bonus_multiplier', 2.0))
+                self.text_alignment_bonus = legacy_bonus
+                self.vision_alignment_bonus = legacy_bonus
             
             # Extract vision settings for LLM (high quality)
             self.image_scale = perf_config.get('image_scale', planner_config.get('image_scale', vision_config.get('vision_config', {}).get('image_scale', 2)))
@@ -722,13 +731,19 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
             print(f"⚠️  LLM call failed: {e}")
             return None
     
-    def compute_llm_alignment_bonus(self, action: int, llm_suggestion: Optional[str]) -> float:
-        """Compute reward bonus if PPO action aligns with LLM suggestion."""
+    def compute_llm_alignment_bonus(self, action: int, llm_suggestion: Optional[str], is_vision: bool = False) -> float:
+        """Compute reward bonus if PPO action aligns with LLM suggestion.
+        
+        Args:
+            action: PPO action taken
+            llm_suggestion: LLM's suggested action
+            is_vision: True if this was a vision call (higher reward), False for text-only
+        """
         if not llm_suggestion:
             return 0.0
         
-        # Map actions to button names
-        action_names = ["NOP", "UP", "DOWN", "LEFT", "RIGHT", "A", "B", "START", "SELECT"]
+        # Map actions to button names (SELECT removed)
+        action_names = ["NOP", "UP", "DOWN", "LEFT", "RIGHT", "A", "B", "START"]
         if action >= len(action_names):
             return 0.0
         
@@ -737,7 +752,8 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         
         # Check if LLM suggested this action
         if action_name in suggestion_upper or (action_name == "A" and "TALK" in suggestion_upper):
-            return self.alignment_bonus_multiplier
+            # Vision alignment is worth more (10x) because it's the gold standard
+            return self.vision_alignment_bonus if is_vision else self.text_alignment_bonus
         
         return 0.0
     
@@ -822,11 +838,12 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                     print(f"👁️  LLM SEES: {scene_desc}")
                     print(f"💡 LLM SUGGESTS: {llm_action}")
                     
-                    # Compute alignment bonus
-                    llm_bonus = self.compute_llm_alignment_bonus(action, llm_action)
+                    # Compute alignment bonus (vision worth 10x more than text)
+                    llm_bonus = self.compute_llm_alignment_bonus(action, llm_action, is_vision=is_vision_step)
                     
                     if llm_bonus > 0:
-                        print(f"✅ PPO action {action} MATCHES LLM → +{llm_bonus:.1f} bonus!")
+                        bonus_type = "VISION" if is_vision_step else "TEXT"
+                        print(f"✅ PPO action {action} MATCHES {bonus_type} LLM → +{llm_bonus:.1f} bonus!")
                 else:
                     # LLM failed, log it
                     self.llm_call_count += 1  # Count failed attempts too
