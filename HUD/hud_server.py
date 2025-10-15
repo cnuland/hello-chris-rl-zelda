@@ -203,10 +203,17 @@ def update_training_data(data, session_id=None):
     if active_session_id is None:
         return False  # No session registered at all
     
-    latest_data['training'] = data
+    # MERGE data instead of replacing to preserve fields from different sources
+    # Workers send: game state, location, health, LLM data
+    # Callback sends: training metrics (steps, epoch, reward)
+    if 'training' not in latest_data:
+        latest_data['training'] = {}
+    
+    latest_data['training'].update(data)  # Merge instead of replace
+    
     data_queue.put({
         'type': 'training',
-        'data': data
+        'data': latest_data['training']  # Send merged data
     })
     return True
 
