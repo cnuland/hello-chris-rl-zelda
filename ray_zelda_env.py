@@ -558,12 +558,16 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
             return None
     
     def call_llm_vision(self, game_state: Dict, screenshot_base64: Optional[str] = None) -> Optional[Dict[str, str]]:
-        """Call vision LLM with screenshot and game state.
+        """Call LLM with game state and optional screenshot.
+        
+        Supports both:
+        - Vision calls: with screenshot (multimodal)
+        - Text calls: without screenshot (text-only, faster)
         
         Returns:
             Dict with 'scene' (description) and 'action' (button), or None if failed
         """
-        if not self.llm_enabled or not screenshot_base64:
+        if not self.llm_enabled:
             return None
         
         try:
@@ -606,7 +610,25 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                 item_count=item_count
             )
             
-            # Prepare API request
+            # Prepare API request (different format for vision vs text-only)
+            if screenshot_base64:
+                # Vision call: multimodal format with image
+                user_content = [
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{screenshot_base64}"
+                        }
+                    },
+                    {
+                        "type": "text",
+                        "text": user_prompt
+                    }
+                ]
+            else:
+                # Text-only call: simple string format
+                user_content = user_prompt
+            
             payload = {
                 "messages": [
                     {
@@ -615,18 +637,7 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                     },
                     {
                         "role": "user",
-                        "content": [
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/jpeg;base64,{screenshot_base64}"
-                                }
-                            },
-                            {
-                                "type": "text",
-                                "text": user_prompt
-                            }
-                        ]
+                        "content": user_content
                     }
                 ],
                 "max_tokens": 150,  # Increased for scene description + action
