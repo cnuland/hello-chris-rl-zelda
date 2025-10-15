@@ -191,6 +191,13 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         self.last_llm_suggestion = None
         self.last_llm_action = None
         
+        # Async LLM support - LLM runs in background, doesn't block game loop!
+        import threading
+        from concurrent.futures import ThreadPoolExecutor
+        self.llm_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="llm_async")
+        self.llm_future = None  # Pending LLM call
+        self.llm_lock = threading.Lock()  # Protect last_llm_suggestion access
+        
         # Check if LLM is enabled from environment config
         try:
             print(f"🔍 Checking config... hasattr={hasattr(self, 'config')}, config={'exists' if hasattr(self, 'config') and self.config else 'missing'}")
@@ -796,12 +803,35 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                 # Don't crash training if tracking fails
                 pass
         
-        # Call LLM for guidance (dual-frequency: text-only or vision)
+        # Check if previous async LLM call finished (non-blocking!)
         llm_bonus = 0.0
+        llm_result_ready = False
+        if self.llm_future and self.llm_future.done():
+            try:
+                llm_result = self.llm_future.result(timeout=0)  # Non-blocking get
+                if llm_result:
+                    with self.llm_lock:
+                        scene_desc = llm_result.get('scene', '')
+                        self.last_llm_suggestion = llm_result.get('action', '')
+                        self.last_llm_action = llm_result.get('action', '')
+                    llm_result_ready = True
+                    print(f"✅ Async LLM completed: {self.last_llm_suggestion}")
+                self.llm_future = None
+            except Exception as e:
+                print(f"⚠️  Async LLM error: {e}")
+                self.llm_future = None
+        
+        # Award bonus if PPO action matches last LLM suggestion (cached, no blocking!)
+        if self.last_llm_suggestion:
+            llm_bonus = self.compute_llm_alignment_bonus(action, self.last_llm_suggestion, is_vision=False)
+            if llm_bonus > 0:
+                print(f"✅ PPO action {action} MATCHES cached LLM → +{llm_bonus:.1f} bonus!")
+        
+        # Start new async LLM call if it's time (non-blocking!)
         is_vision_step = self.llm_enabled and (self._step_count % self.llm_vision_frequency == 0)
         is_text_step = self.llm_enabled and (self._step_count % self.llm_text_frequency == 0) and not is_vision_step
         
-        if is_vision_step or is_text_step:
+        if (is_vision_step or is_text_step) and not self.llm_future:
             # Get structured game state
             if hasattr(self, 'state_encoder') and self.state_encoder:
                 # encode_state returns (vector_obs, structured_state)
@@ -825,40 +855,11 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                 print(f"💬 Text LLM call (step {self._step_count}): game state only")
             
             if screenshot or is_text_step:
-                # Initialize LLM result variables (in case LLM fails)
-                llm_action = self.last_llm_suggestion or 'N/A'  # Use last successful suggestion
-                scene_desc = 'LLM unavailable'
-                llm_bonus = 0.0
-                
-                # Call vision LLM
-                llm_start_time = time.time()
-                llm_result = self.call_llm_vision(game_state, screenshot)
-                llm_response_time = (time.time() - llm_start_time) * 1000  # Convert to ms
-                
-                if llm_result:
-                    self.llm_call_count += 1
-                    self.llm_success_count += 1
-                    
-                    # Extract scene description and action
-                    scene_desc = llm_result.get('scene', '')
-                    llm_action = llm_result.get('action', '')
-                    
-                    self.last_llm_suggestion = llm_action  # Store action for HUD
-                    
-                    # Log what the LLM sees and suggests
-                    print(f"👁️  LLM SEES: {scene_desc}")
-                    print(f"💡 LLM SUGGESTS: {llm_action}")
-                    
-                    # Compute alignment bonus (vision worth 10x more than text)
-                    llm_bonus = self.compute_llm_alignment_bonus(action, llm_action, is_vision=is_vision_step)
-                    
-                    if llm_bonus > 0:
-                        bonus_type = "VISION" if is_vision_step else "TEXT"
-                        print(f"✅ PPO action {action} MATCHES {bonus_type} LLM → +{llm_bonus:.1f} bonus!")
-                else:
-                    # LLM failed, log it
-                    self.llm_call_count += 1  # Count failed attempts too
-                    print(f"⚠️  LLM call failed (404 or error), but continuing to update HUD with screenshot...")
+                # Start async LLM call in background (non-blocking!)
+                call_type = "VISION" if is_vision_step else "TEXT"
+                print(f"🚀 Starting async {call_type} LLM call (step {self._step_count})...")
+                self.llm_future = self.llm_executor.submit(self.call_llm_vision, game_state, screenshot)
+                self.llm_call_count += 1  # Count attempt immediately
                 
                 # Send to HUD (vision calls send screenshot, text calls skip)
                 if self.hud_client and self.hud_client.enabled:
@@ -868,7 +869,7 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                         vision_success = True  # Default to True for text-only calls
                         if screenshot:
                             print(f"   📸 Sending screenshot ({len(screenshot)} chars)...")
-                            vision_success = self.hud_client.update_vision_data(screenshot, llm_response_time)
+                            vision_success = self.hud_client.update_vision_data(screenshot, None)  # No response time (async!)
                             print(f"   📸 Vision data sent: {vision_success}")
                         else:
                             print(f"   💬 Text-only call - skipping screenshot send")
@@ -936,9 +937,9 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                                 'items': item_count
                             },
                             
-                            # LLM Guidance
-                            'llm_suggestion': llm_action,
-                            'llm_scene_description': scene_desc,
+                            # LLM Guidance (using cached values from async calls)
+                            'llm_suggestion': self.last_llm_suggestion or 'Computing...',
+                            'llm_scene_description': 'Async LLM Running',
                             'llm_calls': self.llm_call_count,
                             'llm_success_rate': self.llm_success_count / max(self.llm_call_count, 1),
                             'alignment_bonus': llm_bonus,
