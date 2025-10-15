@@ -27,8 +27,6 @@ class HUDClient:
         self.hud_url = hud_url or os.environ.get('HUD_URL')
         self.session_id = None
         self.enabled = False
-        self.retry_counter = 0  # Track failed registration attempts
-        self.retry_delay = 2    # Wait only 2 resets before retrying after 409 (fast handoff!)
         
         # Connection pooling for faster HTTP requests (keep persistent connections)
         self.session = requests.Session()
@@ -49,7 +47,7 @@ class HUDClient:
     def register_session(self) -> bool:
         """
         Register this training session with the HUD server.
-        Implements backoff to avoid DDOSing server when slot is taken.
+        SIMPLIFIED: No backoff, all workers can send!
         
         Returns:
             bool: True if registration successful
@@ -58,15 +56,7 @@ class HUDClient:
             print("⚠️  HUD URL not set, skipping registration")
             return False
         
-        # Backoff mechanism: if we were rejected before, wait before retrying
-        if self.retry_counter > 0:
-            self.retry_counter -= 1
-            if self.retry_counter % 5 == 0:  # Only log every 5 resets
-                print(f"⏳ Waiting to retry HUD registration ({self.retry_counter} resets remaining)")
-            return False
-        
-        print(f"📡 Attempting HUD registration at: {self.hud_url}/api/register_session")
-        print(f"   Timeout: 10 seconds")
+        print(f"📡 Registering with HUD: {self.hud_url}/api/register_session")
         
         try:
             import sys
@@ -74,29 +64,18 @@ class HUDClient:
             
             response = self.session.post(
                 f"{self.hud_url}/api/register_session",
-                timeout=10  # Increased timeout
+                timeout=5
             )
-            
-            print(f"📡 HUD server responded with status: {response.status_code}")
-            sys.stdout.flush()
             
             if response.status_code == 200:
                 data = response.json()
                 self.session_id = data.get('session_id')
                 self.enabled = True
-                self.retry_counter = 0  # Reset retry counter on success
-                print(f"✅ HUD session registered: {self.session_id[:8]}...")
+                print(f"✅ HUD registered: {self.session_id[:8]}... (all workers can send)")
                 sys.stdout.flush()
                 return True
-            elif response.status_code == 409:
-                # HUD is in use - back off to avoid DDOSing the server
-                self.retry_counter = self.retry_delay
-                print(f"⚠️  HUD already in use (backing off for {self.retry_delay} resets)")
-                sys.stdout.flush()
-                self.enabled = False
-                return False
             else:
-                print(f"❌ HUD registration failed: {response.status_code} - {response.text}")
+                print(f"⚠️  HUD registration failed: {response.status_code}")
                 sys.stdout.flush()
                 return False
         except requests.exceptions.Timeout as e:

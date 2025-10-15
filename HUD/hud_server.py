@@ -22,65 +22,36 @@ latest_data = {
     'vision': {}
 }
 
-# Session management
-active_session_id = None
-active_session_timestamp = None
+# Simple session management - just track for display, accept all updates
 session_lock = threading.Lock()
-SESSION_TIMEOUT = 1  # seconds - if no updates for 1s, session is considered dead (enables instant handoff)
 
 
 def register_session():
     """
     Register a new training session to the HUD.
-    Only one session can be active at a time.
+    SIMPLIFIED: Always succeeds, just returns a session ID for tracking.
+    All workers can send updates simultaneously!
     
     Returns:
-        session_id: UUID for this session, or None if another session is active
+        session_id: UUID for this session
     """
-    global active_session_id, active_session_timestamp
-    
-    with session_lock:
-        current_time = time.time()
-        
-        # Check if there's an active session that hasn't timed out
-        if active_session_id is not None:
-            if active_session_timestamp and (current_time - active_session_timestamp) < SESSION_TIMEOUT:
-                # Another session is still active
-                print(f"⚠️  HUD already connected to session: {active_session_id[:8]}...")
-                print(f"   New session denied. Wait for timeout or stop existing session.")
-                return None
-            else:
-                # Previous session timed out, can take over
-                print(f"🔄 Previous session {active_session_id[:8]}... timed out")
-        
-        # Register new session
-        new_session_id = str(uuid.uuid4())
-        active_session_id = new_session_id
-        active_session_timestamp = current_time
-        
-        print(f"✅ HUD session registered: {new_session_id[:8]}...")
-        return new_session_id
+    new_session_id = str(uuid.uuid4())
+    print(f"✅ HUD session registered: {new_session_id[:8]}... (no restrictions)")
+    return new_session_id
 
 
 def is_session_active(session_id):
     """
-    Check if a session is the active one.
+    Check if a session is active.
+    SIMPLIFIED: Always returns True - all workers can send!
     
     Args:
         session_id: Session UUID to check
         
     Returns:
-        bool: True if this session is active
+        bool: Always True
     """
-    global active_session_id, active_session_timestamp
-    
-    with session_lock:
-        if active_session_id != session_id:
-            return False
-        
-        # Update timestamp to keep session alive
-        active_session_timestamp = time.time()
-        return True
+    return True  # Accept updates from any worker!
 
 
 @app.route('/')
