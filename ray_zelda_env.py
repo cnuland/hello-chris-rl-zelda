@@ -57,7 +57,7 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         # DEBUG: Print environment info
         print("\n" + "="*70)
         print("🔍 DEBUG: ZeldaRayEnv Path Resolution")
-        print("🆕 CODE VERSION: 2025-10-15-06:45 [DEBUG: HUD sending logic]")
+        print("🆕 CODE VERSION: 2025-10-15-07:00 [FIX: HUD data format]")
         print("="*70)
         print(f"CWD: {Path.cwd()}")
         print(f"__file__: {__file__ if '__file__' in globals() else 'N/A'}")
@@ -765,18 +765,45 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                             except:
                                 location_name = f'Room {room_id}'
                             
+                            # Extract entity counts
+                            entities_data = game_state.get('entities', {})
+                            npc_count = len(entities_data.get('npcs', []))
+                            enemy_count = len(entities_data.get('enemies', []))
+                            item_count = len(entities_data.get('items', []))
+                            
+                            # Format data to match HUD JavaScript expectations
                             hud_training_data = {
+                                # Training Progress
+                                'global_step': self._step_count,  # HUD expects 'global_step' not 'step'
+                                'episode': self._episode_count,
+                                'episode_id': f"E{self.instance_id:04d}-{self._episode_count:04d}",  # Format: E0001-0005
+                                'epoch': 0,  # TODO: Get from Ray result
+                                'episode_reward': self._total_reward,
+                                'episode_length': self._step_count,
+                                
+                                # Game State (with correct object formats)
+                                'location': location_name,
+                                'room_id': room_id,
+                                'position': {  # HUD expects {x, y} object
+                                    'x': player_data.get('x', 0),
+                                    'y': player_data.get('y', 0)
+                                },
+                                'health': {  # HUD expects {current, max} object
+                                    'current': player_data.get('health', 0),
+                                    'max': player_data.get('max_health', 0)
+                                },
+                                'entities': {  # HUD expects {npcs, enemies, items} object
+                                    'npcs': npc_count,
+                                    'enemies': enemy_count,
+                                    'items': item_count
+                                },
+                                
+                                # LLM Guidance
                                 'llm_suggestion': llm_action,
                                 'llm_scene_description': scene_desc,
                                 'llm_calls': self.llm_call_count,
                                 'llm_success_rate': self.llm_success_count / max(self.llm_call_count, 1),
                                 'alignment_bonus': llm_bonus,
-                                'step': self._step_count,
-                                'episode': self._episode_count,
-                                'location': location_name,
-                                'room_id': room_id,
-                                'health': player_data.get('health', 0),
-                                'max_health': player_data.get('max_health', 0),
                             }
                             print(f"   📊 Sending training data: step={self._step_count}, episode={self._episode_count}, location={location_name}...")
                             training_success = self.hud_client.update_training_data(hud_training_data)
