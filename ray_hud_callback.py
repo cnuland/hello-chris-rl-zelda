@@ -123,6 +123,14 @@ class ZeldaHUDCallback(DefaultCallbacks):
         episodes_total = result.get('episodes_total', 0)
         iteration = result.get('training_iteration', 0)
         
+        # DEBUG: Log available keys to find episodes count
+        if iteration % 10 == 0:  # Only log every 10 iterations
+            print(f"🔍 DEBUG Ray result keys: {list(result.keys())[:20]}")
+            print(f"   episodes_total: {episodes_total}")
+            print(f"   episodes_this_iter: {result.get('episodes_this_iter', 'N/A')}")
+            print(f"   num_episodes: {result.get('num_episodes', 'N/A')}")
+            print(f"   env_runners: {result.get('env_runners', {}).keys() if 'env_runners' in result else 'N/A'}")
+        
         training_data = {
             # HUD expects these exact field names
             'global_step': timesteps_total,  # renamed from timesteps_total
