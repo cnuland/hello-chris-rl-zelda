@@ -171,9 +171,9 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         print(f"   Observation space: {self.observation_space.shape}")
         print(f"   Action space: {self.action_space}")
         if self.llm_enabled:
-            print(f"   🧠 LLM Guidance: ENABLED")
-            print(f"      💬 Text-only calls: every {self.llm_text_frequency} steps → +{self.text_alignment_bonus} reward")
-            print(f"      📸 Vision calls: every {self.llm_vision_frequency} steps → +{self.vision_alignment_bonus} reward (10x!)")
+            print(f"   🧠 LLM Guidance: ENABLED (probability-based sampling)")
+            print(f"      💬 Text-only calls: {self.llm_text_probability*100:.1f}% chance per step → +{self.text_alignment_bonus} reward")
+            print(f"      📸 Vision calls: {self.llm_vision_probability*100:.1f}% chance per step → +{self.vision_alignment_bonus} reward")
             print(f"      🖼️  Image: {160*self.image_scale}×{144*self.image_scale}, {self.image_quality}% JPEG")
         if hasattr(self, 'hud_client') and self.hud_client and self.hud_client.enabled:
             print(f"   🖥️  HUD Client: ENABLED")
@@ -234,15 +234,31 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
             with open(vision_config_path, 'r') as f:
                 vision_config = yaml.safe_load(f)
             
-            # Extract LLM settings (from performance section or planner_config)
-            # Support dual-frequency: text-only (fast) and vision (slower but more accurate)
-            self.llm_text_frequency = perf_config.get('llm_text_frequency', planner_config.get('llm_text_frequency', 10))
-            self.llm_vision_frequency = perf_config.get('llm_vision_frequency', planner_config.get('llm_vision_frequency', 100))
-            # Legacy support: if old llm_frequency is set, use it for text frequency
+            # Extract LLM settings - Support both probability (new) and frequency (legacy)
+            # NEW: Probability-based sampling (better distribution, less predictable)
+            self.llm_text_probability = perf_config.get('llm_text_probability', planner_config.get('llm_text_probability', None))
+            self.llm_vision_probability = perf_config.get('llm_vision_probability', planner_config.get('llm_vision_probability', None))
+            
+            # LEGACY: Fixed frequency (for backwards compatibility)
+            self.llm_text_frequency = perf_config.get('llm_text_frequency', planner_config.get('llm_text_frequency', None))
+            self.llm_vision_frequency = perf_config.get('llm_vision_frequency', planner_config.get('llm_vision_frequency', None))
+            
+            # If probability not set, convert frequency to probability
+            if self.llm_text_probability is None and self.llm_text_frequency:
+                self.llm_text_probability = 1.0 / self.llm_text_frequency
+            elif self.llm_text_probability is None:
+                self.llm_text_probability = 0.05  # Default 5% (1/20 steps)
+                
+            if self.llm_vision_probability is None and self.llm_vision_frequency:
+                self.llm_vision_probability = 1.0 / self.llm_vision_frequency
+            elif self.llm_vision_probability is None:
+                self.llm_vision_probability = 0.01  # Default 1% (1/100 steps)
+            
+            # Legacy llm_frequency support
             if 'llm_frequency' in perf_config or 'llm_frequency' in planner_config:
                 legacy_freq = perf_config.get('llm_frequency', planner_config.get('llm_frequency', 10))
-                self.llm_text_frequency = legacy_freq
-                self.llm_vision_frequency = legacy_freq * 10  # Vision is 10x less frequent
+                self.llm_text_probability = 1.0 / legacy_freq
+                self.llm_vision_probability = 1.0 / (legacy_freq * 10)
             
             self.hud_update_frequency = perf_config.get('hud_update_frequency', planner_config.get('hud_update_frequency', 3))  # HUD updates more frequently than LLM
             
@@ -796,10 +812,14 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                 # Don't crash training if tracking fails
                 pass
         
-        # Call LLM for guidance (dual-frequency: text-only or vision)
+        # Call LLM for guidance (probability-based sampling for better distribution)
+        import random
         llm_bonus = 0.0
-        is_vision_step = self.llm_enabled and (self._step_count % self.llm_vision_frequency == 0)
-        is_text_step = self.llm_enabled and (self._step_count % self.llm_text_frequency == 0) and not is_vision_step
+        
+        # NEW: Random probability-based sampling (better than fixed intervals!)
+        # Vision and text are mutually exclusive (vision takes precedence if both trigger)
+        is_vision_step = self.llm_enabled and (random.random() < self.llm_vision_probability)
+        is_text_step = self.llm_enabled and (not is_vision_step) and (random.random() < self.llm_text_probability)
         
         if is_vision_step or is_text_step:
             # Get structured game state
