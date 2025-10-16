@@ -25,13 +25,14 @@ EPOCHS ?= 4
 BATCH_SIZE ?= 256
 CHECKPOINT ?=   # Optional checkpoint file for resuming training 
 
-.PHONY: help install llm-serve llm-stop llm-status clean headless visual inference hybrid-visual hybrid-headless run-all core-help
+.PHONY: help install llm-serve llm-stop llm-status clean headless visual inference hybrid-visual hybrid-headless local-visual run-all core-help
 
 help: ## Show available commands and Strategic Training Framework overview
 	@echo "🎯 Zelda-LLM-RL Strategic Training Framework"
 	@echo "=========================================="
 	@echo ""
 	@echo "🚀 VISION HYBRID RL+LLM COMMANDS (NEW!):"
+	@echo "  local-visual    - 🎮 LOCAL visual mode (watch on your computer)"
 	@echo "  hybrid-visual   - 🆕 Vision hybrid with Game Boy screenshots (with PyBoy window)"
 	@echo "  hybrid-headless - 🆕 Vision hybrid training (headless, fast)"
 	@echo ""
@@ -62,7 +63,7 @@ help: ## Show available commands and Strategic Training Framework overview
 	@echo "  run-all       - Demo all strategic modes"
 	@echo "  core-help     - Strategic framework detailed help"
 	@echo ""
-	@echo "🚀 Quick Start: make llm-serve && make hybrid-visual"
+	@echo "🚀 Quick Start (Local): make llm-serve && make local-visual"
 
 install: ## Install project dependencies
 	$(PYTHON) -m pip install -r requirements.txt
@@ -229,6 +230,32 @@ hybrid-headless: ## 🆕 Vision hybrid headless training (fast, production)
 		--total-timesteps 400000 \
 		--config configs/vision_prompt.yaml \
 		$(if $(CHECKPOINT),--checkpoint $(CHECKPOINT),)
+
+local-visual: ## 🎮 LOCAL visual mode - watch RL+LLM training on your computer
+	@echo "🎮 LOCAL VISUAL MODE"
+	@echo "===================="
+	@echo ""
+	@echo "🧠 Features:"
+	@echo "   - PyBoy window showing gameplay (watch Link play!)"
+	@echo "   - Local LLM integration (connects to localhost:8000)"
+	@echo "   - Real-time console logging of LLM decisions"
+	@echo "   - No Ray/Kubernetes needed (runs on your laptop)"
+	@echo ""
+	@echo "📋 Requirements:"
+	@echo "   1. Local LLM server running (make llm-serve)"
+	@echo "   2. ROM file at: roms/zelda_oracle_of_seasons.gbc"
+	@echo "   3. Display available (not headless)"
+	@echo ""
+	@echo "🎯 Configuration:"
+	@echo "   - LLM Endpoint: http://localhost:8000/v1/chat/completions"
+	@echo "   - Text calls: every 20 steps"
+	@echo "   - Vision calls: every 100 steps"
+	@echo "   - PyBoy window: ENABLED (visual mode)"
+	@echo ""
+	@echo "🚀 Starting local visual mode..."
+	@echo "   Press Ctrl+C to stop"
+	@echo ""
+	$(PYTHON) run_local_visual.py
 
 # ========================================
 # 🚀 CORE AREA 3: VISUAL INFERENCE  
