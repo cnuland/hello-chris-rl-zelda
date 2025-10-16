@@ -23,7 +23,7 @@ os.environ['ENV_CONFIG'] = os.environ.get('ENV_CONFIG', 'configs/env.yaml')
 os.environ['VISION_PROMPT_CONFIG'] = os.environ.get('VISION_PROMPT_CONFIG', 'configs/vision_prompt.yaml')
 
 # Import after setting env vars
-from ray_zelda_env import RayZeldaEnv
+from ray_zelda_env import ZeldaRayEnv
 
 
 def print_banner():
@@ -163,7 +163,7 @@ def main():
     print("   PyBoy window will open...\n")
     
     try:
-        env = RayZeldaEnv(
+        env = ZeldaRayEnv(
             env_config={
                 'headless': False,  # VISUAL MODE!
                 'config': config,
