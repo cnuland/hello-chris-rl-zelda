@@ -48,20 +48,20 @@ graph TB
     
     User["👤 User Browser"] -.->|http://hud:8086<br/>Real-time Dashboard| HUD
     
-    style ROSA fill:#e1f5ff,stroke:#0277bd,stroke-width:4px
-    style llmd fill:#fff3e0,stroke:#ef6c00,stroke-width:2px
-    style minio fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
-    style zelda fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
-    style Gateway fill:#4fc3f7,stroke:#0277bd,stroke-width:2px
-    style MinIO fill:#ba68c8,stroke:#7b1fa2,stroke-width:2px
-    style HUD fill:#81c784,stroke:#2e7d32,stroke-width:2px
-    style RayHead fill:#ffb74d,stroke:#ef6c00,stroke-width:2px
-    style RayWorker1 fill:#66bb6a,stroke:#2e7d32,stroke-width:3px
-    style RayWorker2 fill:#a5d6a7,stroke:#2e7d32,stroke-width:2px
-    style RayWorkerN fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px
-    style LLM1 fill:#7986cb,stroke:#3949ab,stroke-width:2px
-    style LLM2 fill:#7986cb,stroke:#3949ab,stroke-width:2px
-    style LLM3 fill:#7986cb,stroke:#3949ab,stroke-width:2px
+    style ROSA fill:#e1f5ff,stroke:#0277bd,stroke-width:4px,color:#000
+    style llmd fill:#ffe0b2,stroke:#ef6c00,stroke-width:2px,color:#000
+    style minio fill:#e1bee7,stroke:#7b1fa2,stroke-width:2px,color:#000
+    style zelda fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px,color:#000
+    style Gateway fill:#29b6f6,stroke:#0277bd,stroke-width:2px,color:#000
+    style MinIO fill:#ab47bc,stroke:#7b1fa2,stroke-width:2px,color:#fff
+    style HUD fill:#66bb6a,stroke:#2e7d32,stroke-width:2px,color:#000
+    style RayHead fill:#ffa726,stroke:#ef6c00,stroke-width:2px,color:#000
+    style RayWorker1 fill:#43a047,stroke:#2e7d32,stroke-width:3px,color:#fff
+    style RayWorker2 fill:#81c784,stroke:#2e7d32,stroke-width:2px,color:#000
+    style RayWorkerN fill:#a5d6a7,stroke:#2e7d32,stroke-width:2px,color:#000
+    style LLM1 fill:#5c6bc0,stroke:#3949ab,stroke-width:2px,color:#fff
+    style LLM2 fill:#5c6bc0,stroke:#3949ab,stroke-width:2px,color:#fff
+    style LLM3 fill:#5c6bc0,stroke:#3949ab,stroke-width:2px,color:#fff
 ```
 
 ## Component Details
