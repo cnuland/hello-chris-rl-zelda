@@ -75,9 +75,27 @@ MAPLE_COUNTER = 0xC63E  # Maple encounter counter
 
 # Screen/level data (Data Crystal confirmed)
 OVERWORLD_FLAGS_START = 0xC700  # Screen flags (256 bytes): chests, events, etc.
-ENEMIES_ON_SCREEN = 0xCC30  # Count of active enemy sprites
+ENEMIES_ON_SCREEN = 0xCC30  # Count of active enemy sprites (confirmed working)
 COLLISION_MAP_START = 0xCE00  # Current screen collision data (~0xB0 bytes)
 TILE_DATA_START = 0xCF00  # Current screen tile indices (~0xB0 bytes)
+
+# Entity system (ZeldaHacking.net Wiki - wiki.zeldahacking.net/oracle/Objects)
+# Each entity category uses 64-byte slots for entity data
+# Structure: type, status, x, y, direction, health, animation, etc.
+
+# Entity base addresses (64 bytes each)
+ENTITY_SPECIAL_OBJECTS = 0xD000  # Link (slot 0), animal companion, Maple, raft
+ENTITY_PARENT_ITEMS = 0xD040     # State-holders for active items (not rendered)
+ENTITY_ITEMS_SLOT1 = 0xD080      # Weapons, projectiles (first slot)
+ENTITY_ITEMS_SLOT2 = 0xD0C0      # Weapons, projectiles (second slot)
+ENTITY_INTERACTIONS = 0xD140     # NPCs, scripts, non-hostile entities
+ENTITY_ENEMIES = 0xD180          # Hostile entities that can damage Link
+ENTITY_PARTS = 0xD1C0            # Enemy weapons, projectiles, owl statues
+
+# Entity count addresses (hypothesized based on 0xCC30 pattern)
+ENEMIES_COUNT = 0xCC30           # Confirmed: Count of active enemy sprites
+NPCS_COUNT = 0xCC31              # Hypothesis: Count of active NPCs (needs testing)
+ITEMS_COUNT = 0xCC32             # Hypothesis: Count of active items (needs testing)
 
 # Settings (Data Crystal confirmed)
 SOUND_VOLUME = 0xC024  # Sound volume control bits

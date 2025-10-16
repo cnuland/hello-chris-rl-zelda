@@ -149,6 +149,12 @@ class ZeldaConfigurableEnvironment(gym.Env):
         self.steps_since_llm_call = 0    # Count steps since last LLM call
         self.llm_aligned_actions = 0     # Count actions that follow LLM guidance
         self.total_actions = 0           # Total actions for alignment rate
+        
+        # NEW: Extreme exploration tracking (movement is EVERYTHING!)
+        self.last_position = (0, 0)      # Track (X, Y) position
+        self.stuck_counter = 0           # Count steps in same position
+        self.visited_grid_squares = {}   # Track grid squares per room: {room_id: set((gx, gy))}
+        self.last_action = None          # Track last action taken
 
     def _get_default_config(self) -> Dict[str, Any]:
         """Get default configuration for pure RL mode."""
@@ -257,6 +263,20 @@ class ZeldaConfigurableEnvironment(gym.Env):
         
         # Get observation and info
         obs = self._get_observation()
+        
+        # Track position for stuck detection
+        if hasattr(self.bridge, 'get_memory'):
+            current_x = self.bridge.get_memory(0xC4AC)
+            current_y = self.bridge.get_memory(0xC4AD)
+            current_pos = (current_x, current_y)
+            
+            # Check if position changed
+            if current_pos == self.last_position:
+                self.stuck_counter += 1
+            else:
+                self.stuck_counter = 0  # Reset counter when moving
+                self.last_position = current_pos
+        
         reward = self._calculate_reward(total_reward)
         terminated = self._check_terminated()
         truncated = self._check_truncated()
@@ -315,8 +335,8 @@ class ZeldaConfigurableEnvironment(gym.Env):
             return obs.astype(np.float32)
 
     def _calculate_reward(self, base_reward: float) -> float:
-        """Calculate reward with enhanced exploration bonuses."""
-        reward_config = self.config.get('rewards', {})
+        """Calculate reward with EXTREME emphasis on movement and exploration."""
+        reward_config = self.config.get('reward_structure', {})
         
         total_reward = base_reward
         
@@ -324,8 +344,23 @@ class ZeldaConfigurableEnvironment(gym.Env):
         # Time penalty (encourages efficiency)
         total_reward += reward_config.get('time_penalty', -0.0001)
         
-        # Movement reward (anti-idle)
-        total_reward += reward_config.get('movement_reward', 0.001)
+        # Movement reward (anti-idle) - MASSIVELY INCREASED!
+        movement_reward = reward_config.get('movement', 0.1)
+        total_reward += movement_reward
+        
+        # NEW: Position stuck penalty (staying in same X,Y)
+        position_stuck_penalty = reward_config.get('position_stuck', -1.0)
+        if self.stuck_counter > 5:  # If stuck for more than 5 steps
+            total_reward += position_stuck_penalty
+            if self.stuck_counter % 10 == 0:  # Log occasionally
+                print(f"⚠️  POSITION STUCK! Same spot for {self.stuck_counter} steps ({position_stuck_penalty:.1f} penalty)")
+        
+        # NEW: Menu usage penalty (pressing START button)
+        if self.last_action == 7:  # START button (ZeldaAction.START = 7)
+            menu_penalty = reward_config.get('menu_usage', -0.5)
+            total_reward += menu_penalty
+            if reward_config.get('menu_usage', 0) != 0:  # Only log if penalty is configured
+                print(f"📋 MENU OPENED! START button pressed ({menu_penalty:.1f} penalty)")
         
         # EXPLORATION BONUSES - Get current game state for analysis
         try:
@@ -334,16 +369,41 @@ class ZeldaConfigurableEnvironment(gym.Env):
                 dialogue_state = self.bridge.get_memory(0xC2EF)  # Dialogue/cutscene state
                 dungeon_floor = self.bridge.get_memory(0xC63D)  # Dungeon floor (0 = overworld)
                 
-                # A) NEW ROOM EXPLORATION REWARD - HUGE BONUS (ONLY ONCE PER ROOM!)
+                # A) NEW ROOM EXPLORATION REWARD - MASSIVE BONUS (ONLY ONCE PER ROOM!)
                 if current_room not in self.visited_rooms:
                     self.visited_rooms.add(current_room)
-                    exploration_reward = reward_config.get('room_discovery_reward', 10.0)
+                    exploration_reward = reward_config.get('new_room_discovery', 20.0)
                     total_reward += exploration_reward
                     print(f"🗺️  NEW ROOM DISCOVERED! Room {current_room} (+{exploration_reward:.1f} reward) | Total visited: {len(self.visited_rooms)}")
+                    # Reset grid squares for new room
+                    self.visited_grid_squares[current_room] = set()
                 else:
-                    # DEBUG: Log revisits to catch farming
+                    # Apply revisit penalty (discourage loops and farming)
+                    revisit_penalty = reward_config.get('revisit_penalty', -0.5)
+                    total_reward += revisit_penalty
                     if self.steps_since_last_llm_call < 5 and self.last_room_id != current_room:
-                        print(f"⚠️  REVISITING ROOM {current_room} - NO REWARD (already in visited set)")
+                        print(f"⚠️  REVISITING ROOM {current_room} ({revisit_penalty:.1f} penalty)")
+                
+                # NEW: Grid exploration within room (encourage thorough exploration)
+                player_x = self.bridge.get_memory(0xC4AC)
+                player_y = self.bridge.get_memory(0xC4AD)
+                # Divide room into 16x16 pixel grid squares
+                grid_x = player_x // 16
+                grid_y = player_y // 16
+                grid_square = (grid_x, grid_y)
+                
+                # Initialize room's grid tracking if needed
+                if current_room not in self.visited_grid_squares:
+                    self.visited_grid_squares[current_room] = set()
+                
+                # Reward for exploring new grid square within room
+                if grid_square not in self.visited_grid_squares[current_room]:
+                    self.visited_grid_squares[current_room].add(grid_square)
+                    grid_reward = reward_config.get('grid_exploration', 5.0)
+                    total_reward += grid_reward
+                    # Only log occasionally to avoid spam
+                    if len(self.visited_grid_squares[current_room]) % 5 == 0:
+                        print(f"📍 Grid square explored! Room {current_room}: {len(self.visited_grid_squares[current_room])} squares (+{grid_reward:.1f})")
                 
                 # B) DUNGEON REWARDS - MASSIVE BONUS!
                 if dungeon_floor > 0:  # In a dungeon

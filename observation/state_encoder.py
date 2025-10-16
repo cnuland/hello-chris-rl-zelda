@@ -22,7 +22,10 @@ from .ram_maps.zelda_addresses import (
     INVENTORY_1, INVENTORY_2, INVENTORY_3, ITEM_FLAGS,
     CURRENT_SEASON, SEASON_SPIRITS, SEASONS, DIRECTIONS,
     DUNGEON_KEYS, BOSS_KEYS, DUNGEON_MAP, DUNGEON_COMPASS, BOSS_FLAGS,
-    SCREEN_TRANSITION, LOADING_SCREEN, MENU_STATE
+    SCREEN_TRANSITION, LOADING_SCREEN, MENU_STATE,
+    # Entity detection addresses (newly researched)
+    ENEMIES_COUNT, NPCS_COUNT, ITEMS_COUNT,
+    ENTITY_INTERACTIONS, ENTITY_ENEMIES, ENTITY_ITEMS_SLOT1, ENTITY_ITEMS_SLOT2
 )
 from .visual_encoder import VisualEncoder
 
@@ -123,9 +126,22 @@ class ZeldaStateEncoder:
         health_raw = pyboy_bridge.get_memory(PLAYER_HEALTH)
         max_health_raw = pyboy_bridge.get_memory(PLAYER_MAX_HEALTH)
         
+        # Read position with diagnostic logging
+        x_pos = pyboy_bridge.get_memory(PLAYER_X)
+        y_pos = pyboy_bridge.get_memory(PLAYER_Y)
+        
+        # DEBUG: Log raw memory values for position debugging (every 100 reads)
+        import random
+        if random.random() < 0.01:  # 1% sample rate
+            # Read neighboring addresses to check if Y is stored differently
+            y_minus_1 = pyboy_bridge.get_memory(PLAYER_Y - 1) if PLAYER_Y > 0 else None
+            y_plus_1 = pyboy_bridge.get_memory(PLAYER_Y + 1)
+            print(f"🔍 RAM Debug: X@0x{PLAYER_X:04X}={x_pos}, Y@0x{PLAYER_Y:04X}={y_pos}, "
+                  f"Y-1@0x{PLAYER_Y-1:04X}={y_minus_1}, Y+1@0x{PLAYER_Y+1:04X}={y_plus_1}")
+        
         state['player'] = {
-            'x': pyboy_bridge.get_memory(PLAYER_X),
-            'y': pyboy_bridge.get_memory(PLAYER_Y),
+            'x': x_pos,
+            'y': y_pos,
             'direction': DIRECTIONS.get(pyboy_bridge.get_memory(PLAYER_DIRECTION), 'unknown'),
             'room': pyboy_bridge.get_memory(PLAYER_ROOM),
             'health': health_raw // 4 if health_raw > 0 else 0,  # Convert quarter-hearts to hearts
@@ -205,6 +221,34 @@ class ZeldaStateEncoder:
             'maple_counter': pyboy_bridge.get_memory(MAPLE_COUNTER),
             'enemies_on_screen': pyboy_bridge.get_memory(ENEMIES_ON_SCREEN),
         }
+        
+        # Entity detection (ZeldaHacking.net Wiki research)
+        # Option 1: Try count addresses (0xCC30 confirmed for enemies)
+        enemy_count = pyboy_bridge.get_memory(ENEMIES_COUNT)
+        npc_count = pyboy_bridge.get_memory(NPCS_COUNT)  # Hypothesis - needs validation
+        item_count = pyboy_bridge.get_memory(ITEMS_COUNT)  # Hypothesis - needs validation
+        
+        # Option 2: Fallback to entity type checking if counts are invalid
+        # Check if entity type field (offset +0x00) is non-zero = active
+        if npc_count == 0 or npc_count > 20:  # Sanity check (> 20 seems wrong)
+            npc_active = 1 if pyboy_bridge.get_memory(ENTITY_INTERACTIONS) != 0x00 else 0
+            npc_count = npc_active
+        
+        if item_count == 0 or item_count > 20:  # Sanity check
+            item_active_1 = 1 if pyboy_bridge.get_memory(ENTITY_ITEMS_SLOT1) != 0x00 else 0
+            item_active_2 = 1 if pyboy_bridge.get_memory(ENTITY_ITEMS_SLOT2) != 0x00 else 0
+            item_count = item_active_1 + item_active_2
+        
+        state['entities'] = {
+            'enemies': enemy_count,
+            'npcs': npc_count,
+            'items': item_count,
+        }
+        
+        # DEBUG: Log entity counts occasionally to validate detection
+        if random.random() < 0.01:  # 1% sample rate
+            print(f"🎯 Entity counts: enemies={enemy_count}, npcs={npc_count}, items={item_count}, "
+                  f"room=0x{state['player']['room']:02X}")
 
         # Inventory
         inv1 = pyboy_bridge.get_memory(INVENTORY_1)
