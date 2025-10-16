@@ -224,6 +224,10 @@ class ZeldaConfigurableEnvironment(gym.Env):
         self.current_structured_state = None
         self.previous_structured_state = None
         
+        # Track initial death count to detect when Link dies
+        # TOTAL_DEATHS is at 0xC61E (2 bytes)
+        self.initial_death_count = self.bridge.get_memory(0xC61E) + (self.bridge.get_memory(0xC61F) << 8)
+        
         # Get initial observation
         obs = self._get_observation()
         info = self._get_info()
@@ -596,10 +600,18 @@ class ZeldaConfigurableEnvironment(gym.Env):
 
     def _check_terminated(self) -> bool:
         """Check if episode should terminate."""
-        # Check for death or other terminal conditions
+        # Check death counter (most reliable - game increments this before reset)
+        if hasattr(self, 'initial_death_count'):
+            current_death_count = self.bridge.get_memory(0xC61E) + (self.bridge.get_memory(0xC61F) << 8)
+            if current_death_count > self.initial_death_count:
+                print(f"💀 Link died! Death count: {self.initial_death_count} → {current_death_count} (Episode terminated)")
+                return True
+        
+        # Fallback: Check for health <= 0 (in case death counter isn't available yet)
         if self.current_structured_state:
             player = self.current_structured_state.get('player', {})
             if player.get('health', 3) <= 0:
+                print(f"💔 Link's health reached 0! (Episode terminated)")
                 return True
                 
         return False
