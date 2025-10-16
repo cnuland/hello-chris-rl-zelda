@@ -47,7 +47,8 @@ class HUDClient:
     def register_session(self) -> bool:
         """
         Register this training session with the HUD server.
-        No backoff - retry every reset until successful!
+        Single-session model: Only one worker can control HUD at a time.
+        If another session is active (409), this client stays disabled.
         
         Returns:
             bool: True if registration successful
@@ -65,11 +66,14 @@ class HUDClient:
                 data = response.json()
                 self.session_id = data.get('session_id')
                 self.enabled = True
-                print(f"✅ HUD session registered: {self.session_id[:8]}...")
+                print(f"✅ HUD session registered: {self.session_id[:8]}... (this worker controls HUD)")
                 return True
             elif response.status_code == 409:
-                # Another session active, will retry next reset
+                # Another session active - this worker will NOT control HUD
                 self.enabled = False
+                if not hasattr(self, '_registration_rejected_logged'):
+                    print(f"ℹ️  HUD already in use by another worker (this is normal)")
+                    self._registration_rejected_logged = True
                 return False
             else:
                 return False

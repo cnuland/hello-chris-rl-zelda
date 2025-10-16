@@ -22,17 +22,18 @@ latest_data = {
     'vision': {}
 }
 
-# Session management with FAST handoff
+# Session management with STABLE single-session control
 active_session_id = None
 active_session_timestamp = None
 session_lock = threading.Lock()
-SESSION_TIMEOUT = 0.5  # FAST timeout - 0.5 seconds for instant handoff!
+SESSION_TIMEOUT = 10.0  # 10 seconds - stable single session, prevents rapid handoffs
 
 
 def register_session():
     """
     Register a new training session to the HUD.
-    Fast handoff: If current session is inactive (0.5s), take over immediately.
+    Single-session model: Only one session can be active at a time.
+    Sessions timeout after 10 seconds of inactivity.
     
     Returns:
         session_id: UUID for this session, or None if another session is active
@@ -45,11 +46,12 @@ def register_session():
         # Check if there's an active session that hasn't timed out
         if active_session_id is not None:
             if active_session_timestamp and (current_time - active_session_timestamp) < SESSION_TIMEOUT:
-                # Another session is still active (sent update < 0.5s ago)
+                # Another session is still active (sent update < 10s ago)
+                # Reject this registration attempt
                 return None
             else:
-                # Previous session timed out, take over!
-                print(f"🔄 Session {active_session_id[:8]}... timed out, taking over")
+                # Previous session timed out (>10s inactive), take over!
+                print(f"🔄 Session {active_session_id[:8]}... timed out after {SESSION_TIMEOUT}s, new session taking over")
         
         # Register new session
         new_session_id = str(uuid.uuid4())
