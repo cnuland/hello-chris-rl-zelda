@@ -821,6 +821,9 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         is_vision_step = self.llm_enabled and (random.random() < self.llm_vision_probability)
         is_text_step = self.llm_enabled and (not is_vision_step) and (random.random() < self.llm_text_probability)
         
+        # Track if LLM ran this step (for HUD duplicate detection)
+        llm_ran_this_step = is_vision_step or is_text_step
+        
         if is_vision_step or is_text_step:
             # Get structured game state
             if hasattr(self, 'state_encoder') and self.state_encoder:
@@ -993,9 +996,8 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
             # Only send if HUD is enabled and we're not already sending via LLM block
             if self.hud_client and self.hud_client.enabled:
                 # Skip if we just sent via LLM (avoid duplicate)
-                llm_vision_just_ran = self.llm_enabled and (self._step_count % self.llm_vision_frequency == 0)
-                llm_text_just_ran = self.llm_enabled and (self._step_count % self.llm_text_frequency == 0)
-                if not (llm_vision_just_ran or llm_text_just_ran):
+                # NOTE: With probability-based sampling, we track llm_ran_this_step flag
+                if not llm_ran_this_step:
                     try:
                         # Capture fresh screenshot (optimized for HUD - fast!)
                         screenshot = self.capture_screenshot_base64(for_hud=True)
