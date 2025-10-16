@@ -1002,17 +1002,19 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                     try:
                         # Capture fresh screenshot (optimized for HUD - fast!)
                         screenshot = self.capture_screenshot_base64(for_hud=True)
+                        
+                        # Get game state for HUD data (needed for both vision and training)
+                        if hasattr(self, 'state_encoder') and self.state_encoder:
+                            _, game_state = self.state_encoder.encode_state(self.bridge)
+                        else:
+                            game_state = {}
+                        
+                        # Send vision data (screenshot only, no LLM response time for streaming)
+                        vision_success = False
                         if screenshot:
-                            # Get game state for HUD data
-                            if hasattr(self, 'state_encoder') and self.state_encoder:
-                                _, game_state = self.state_encoder.encode_state(self.bridge)
-                            else:
-                                game_state = {}
-                            
-                            # Send vision data (screenshot only, no LLM response time for streaming)
                             vision_success = self.hud_client.update_vision_data(screenshot, None)
                             
-                        # Send training data (game state)
+                        # Send training data (game state) - ALWAYS send, even without screenshot!
                         player_data = game_state.get('player', {})
                         room_id = player_data.get('room', 0)
                         
@@ -1094,8 +1096,14 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                         
                         training_success = self.hud_client.update_training_data(hud_training_data)
                         
-                        if vision_success and training_success:
-                            print(f"🎬 HUD stream update: step={self._step_count}, location={location_name}")
+                        # Log HUD stream updates (show both vision and training status)
+                        if vision_success or training_success:
+                            status = []
+                            if vision_success:
+                                status.append("📸 vision")
+                            if training_success:
+                                status.append("📊 training")
+                            print(f"🎬 HUD stream update: {', '.join(status)} | step={self._step_count}, location={location_name}")
                     except Exception as e:
                         # Don't crash training if HUD streaming fails
                         print(f"⚠️  HUD stream update failed: {e}")
