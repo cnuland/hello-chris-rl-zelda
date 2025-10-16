@@ -164,7 +164,7 @@ def main():
     
     try:
         env = ZeldaRayEnv(
-            env_config={
+            config={
                 'headless': False,  # VISUAL MODE!
                 'config': config,
                 'instance_id': 0,
