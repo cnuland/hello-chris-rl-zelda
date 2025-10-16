@@ -938,9 +938,9 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                         hud_training_data = {
                             # Training Progress
                             'global_step': self._step_count,  # HUD expects 'global_step' not 'step'
-                            'episode': self._episode_count,
+                            'episode': self._episode_count,  # Worker-specific episode count
                             'episode_id': f"E{self.instance_id:04d}-{self._episode_count:04d}",  # Format: E0001-0005
-                            'epoch': 0,  # TODO: Get from Ray result
+                            # NOTE: Don't send 'epoch' from workers - let callback handle it (uses Ray training_iteration)
                             'episode_reward': self._total_reward,
                             'episode_length': self._step_count,
                             
