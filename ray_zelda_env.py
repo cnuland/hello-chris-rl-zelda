@@ -616,10 +616,11 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                 location_name = f'Room {room_id}'
             
             # Entities might not exist (depends on use_structured_entities config)
+            # NOTE: Entities are now COUNTS (integers), not lists!
             entities = game_state.get('entities', {})
-            npc_count = len(entities.get('npcs', []))
-            enemy_count = len(entities.get('enemies', []))
-            item_count = len(entities.get('items', []))
+            npc_count = entities.get('npcs', 0)  # Direct integer value
+            enemy_count = entities.get('enemies', 0)  # Direct integer value
+            item_count = entities.get('items', 0)  # Direct integer value
             
             print(f"📤 SENDING TO LLM: {location_name}, health={health}/{max_health}, pos=({x},{y})")
             
@@ -927,11 +928,11 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                             self.milestones['dungeon_entered'] = True
                             print(f"🏰 MILESTONE: Dungeon Entered!")
                         
-                        # Extract entity counts
+                        # Extract entity counts (now integers, not lists!)
                         entities_data = game_state.get('entities', {})
-                        npc_count = len(entities_data.get('npcs', []))
-                        enemy_count = len(entities_data.get('enemies', []))
-                        item_count = len(entities_data.get('items', []))
+                        npc_count = entities_data.get('npcs', 0)  # Direct integer value
+                        enemy_count = entities_data.get('enemies', 0)  # Direct integer value
+                        item_count = entities_data.get('items', 0)  # Direct integer value
                         
                         # Format data to match HUD JavaScript expectations
                         hud_training_data = {
@@ -1053,11 +1054,11 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                             self.milestones['dungeon_entered'] = True
                             print(f"🏰 MILESTONE: Dungeon Entered!")
                         
-                        # Extract entity counts
+                        # Extract entity counts (now integers, not lists!)
                         entities_data = game_state.get('entities', {})
-                        npc_count = len(entities_data.get('npcs', []))
-                        enemy_count = len(entities_data.get('enemies', []))
-                        item_count = len(entities_data.get('items', []))
+                        npc_count = entities_data.get('npcs', 0)  # Direct integer value
+                        enemy_count = entities_data.get('enemies', 0)  # Direct integer value
+                        item_count = entities_data.get('items', 0)  # Direct integer value
                         
                         # Debug: Log entity detection every 100 steps
                         if self._step_count % 100 == 0:
