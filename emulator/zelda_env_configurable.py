@@ -155,6 +155,11 @@ class ZeldaConfigurableEnvironment(gym.Env):
         self.stuck_counter = 0           # Count steps in same position
         self.visited_grid_squares = {}   # Track grid squares per room: {room_id: set((gx, gy))}
         self.last_action = None          # Track last action taken
+        
+        # Smart menu usage tracking
+        self.last_equipped_items = (0, 0)  # Track (A button, B button) items
+        self.consecutive_menu_opens = 0     # Count consecutive menu actions
+        self.steps_since_menu = 0           # Steps since last menu open
 
     def _get_default_config(self) -> Dict[str, Any]:
         """Get default configuration for pure RL mode."""
@@ -355,12 +360,48 @@ class ZeldaConfigurableEnvironment(gym.Env):
             if self.stuck_counter % 10 == 0:  # Log occasionally
                 print(f"⚠️  POSITION STUCK! Same spot for {self.stuck_counter} steps ({position_stuck_penalty:.1f} penalty)")
         
-        # NEW: Menu usage penalty (pressing START button)
+        # SMART Menu usage penalty (pressing START button)
         if self.last_action == 7:  # START button (ZeldaAction.START = 7)
-            menu_penalty = reward_config.get('menu_usage', -0.5)
-            total_reward += menu_penalty
-            if reward_config.get('menu_usage', 0) != 0:  # Only log if penalty is configured
-                print(f"📋 MENU OPENED! START button pressed ({menu_penalty:.1f} penalty)")
+            # Track consecutive menu opens (escalating penalty for menu surfing!)
+            self.consecutive_menu_opens += 1
+            self.steps_since_menu = 0
+            
+            # Check if equipped items changed (reward switching, penalize idling)
+            try:
+                if hasattr(self.bridge, 'get_memory'):
+                    current_a = self.bridge.get_memory(0xC681)  # A button item
+                    current_b = self.bridge.get_memory(0xC680)  # B button item
+                    current_items = (current_a, current_b)
+                    
+                    items_changed = current_items != self.last_equipped_items
+                    self.last_equipped_items = current_items
+                    
+                    if items_changed and self.consecutive_menu_opens == 1:
+                        # Good menu usage: Switching items purposefully
+                        switch_reward = reward_config.get('item_switch_reward', 0.5)
+                        total_reward += switch_reward
+                        print(f"🔄 ITEM SWITCHED! Equipment changed (+{switch_reward:.1f} reward)")
+                    else:
+                        # Bad menu usage: Surfing without purpose
+                        # Escalating penalty for consecutive menu opens
+                        base_penalty = reward_config.get('menu_usage', -0.5)
+                        escalation = self.consecutive_menu_opens - 1  # 0 for first, 1 for second, etc.
+                        menu_penalty = base_penalty * (1 + escalation)  # -0.5, -1.0, -1.5, -2.0...
+                        total_reward += menu_penalty
+                        
+                        if self.consecutive_menu_opens > 1:
+                            print(f"📋 MENU SURFING! {self.consecutive_menu_opens} consecutive opens ({menu_penalty:.1f} penalty)")
+                        else:
+                            print(f"📋 MENU OPENED! START button pressed ({menu_penalty:.1f} penalty)")
+            except:
+                # Fallback: Simple penalty if memory read fails
+                menu_penalty = reward_config.get('menu_usage', -0.5)
+                total_reward += menu_penalty
+        else:
+            # Reset consecutive counter if not opening menu
+            if self.consecutive_menu_opens > 0:
+                self.consecutive_menu_opens = 0
+            self.steps_since_menu += 1
         
         # EXPLORATION BONUSES - Get current game state for analysis
         try:

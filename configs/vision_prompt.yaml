@@ -243,11 +243,14 @@ vision_user_prompt_template: |
   - Location: {location} {cave_hint}
   - Health: {health}/{max_health} hearts
   - Position: ({x}, {y})
+  - Equipped: [A: {a_button_item}, B: {b_button_item}]
   - NPCs nearby: {npc_count}
   - Enemies present: {enemy_count}
   - Items visible: {item_count}
   
   Look at the Game Boy screenshot above and suggest ONE button to progress through the game.
+  
+  ⚠️ IMPORTANT: You can see what's equipped above. DON'T suggest START (menu) unless switching items is critically needed for the situation (e.g., need bombs for a wall, need shield for defense). The agent wastes time in menus!
   
   🌳 CURRENT MISSION: REACH MAKU TREE → TALK TO MAKU TREE → FIND GNARLED ROOT DUNGEON
   

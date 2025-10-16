@@ -622,7 +622,20 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
             enemy_count = entities.get('enemies', 0)  # Direct integer value
             item_count = entities.get('items', 0)  # Direct integer value
             
-            print(f"📤 SENDING TO LLM: {location_name}, health={health}/{max_health}, pos=({x},{y})")
+            # Equipped items (for inventory awareness)
+            active_items = game_state.get('active_items', {})
+            a_button_item = active_items.get('a_button', 0)
+            b_button_item = active_items.get('b_button', 0)
+            
+            # Simple item mapping (common items)
+            item_names = {
+                0: 'None', 1: 'Sword', 2: 'Bombs', 3: 'Shield', 4: 'Boomerang',
+                5: 'Rod', 6: 'Seeds', 7: 'Feather', 8: 'Shovel', 9: 'Bracelet'
+            }
+            a_item_name = item_names.get(a_button_item, f'Item{a_button_item}')
+            b_item_name = item_names.get(b_button_item, f'Item{b_button_item}')
+            
+            print(f"📤 SENDING TO LLM: {location_name}, health={health}/{max_health}, pos=({x},{y}), equipped=[A:{a_item_name}, B:{b_item_name}]")
             
             # Format prompt with game state
             user_prompt = self.user_prompt_template.format(
@@ -634,7 +647,9 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                 y=y,
                 npc_count=npc_count,
                 enemy_count=enemy_count,
-                item_count=item_count
+                item_count=item_count,
+                a_button_item=a_item_name,
+                b_button_item=b_item_name
             )
             
             # Prepare API request (different format for vision vs text-only)
