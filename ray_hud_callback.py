@@ -155,11 +155,13 @@ class ZeldaHUDCallback(DefaultCallbacks):
         
         training_data = {
             # HUD expects these exact field names
-            'global_step': timesteps_total,  # renamed from timesteps_total
-            'episode': episodes_total,  # renamed from episodes_total
-            'epoch': iteration,  # use iteration as epoch
-            'episode_reward': result.get('episode_reward_mean', 0.0),  # renamed from mean_reward
-            'episode_length': result.get('episode_len_mean', 0.0),  # renamed from mean_episode_length
+            # ONLY send GLOBAL metrics (not worker-specific!)
+            'global_step': timesteps_total,  # Global step count
+            'epoch': iteration,  # Training iteration (epoch)
+            # NOTE: Don't send 'episode' or 'episode_reward' - workers handle these!
+            # Sending them here overwrites worker data with 0 values
+            'episode_len_mean': result.get('episode_len_mean', 0.0),  # Mean across all workers
+            'episode_return_mean': result.get('episode_return_mean', 0.0),  # Mean across all workers
             'learning_rate': result.get('info', {}).get('learner', {}).get('default_policy', {}).get('cur_lr', 0.0),
             'iteration': iteration,  # keep for backward compatibility
         }
@@ -177,10 +179,10 @@ class ZeldaHUDCallback(DefaultCallbacks):
             if self.hud_client and self.hud_client.enabled:
                 success = self.hud_client.update_training_data(training_data)
                 if success:
-                    print(f"📊 HUD updated: epoch={training_data['epoch']}, "
-                          f"steps={training_data['global_step']}, "
-                          f"episodes={training_data['episode']}, "
-                          f"reward={training_data['episode_reward']:.1f}")
+                    print(f"📊 HUD updated (callback): epoch={training_data['epoch']}, "
+                          f"global_steps={training_data['global_step']}, "
+                          f"mean_return={training_data.get('episode_return_mean', 0):.1f}, "
+                          f"mean_length={training_data.get('episode_len_mean', 0):.1f}")
                 else:
                     print(f"⚠️  HUD update failed")
         except Exception as e:
