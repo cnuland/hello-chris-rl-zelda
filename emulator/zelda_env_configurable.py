@@ -160,6 +160,10 @@ class ZeldaConfigurableEnvironment(gym.Env):
         self.last_equipped_items = (0, 0)  # Track (A button, B button) items
         self.consecutive_menu_opens = 0     # Count consecutive menu actions
         self.steps_since_menu = 0           # Steps since last menu open
+        
+        # Inventory change tracking (for item acquisition logging)
+        self.last_inventory = None          # Track inventory state (16 bytes)
+        self.items_obtained = set()         # Track unique items obtained this episode
 
     def _get_default_config(self) -> Dict[str, Any]:
         """Get default configuration for pure RL mode."""
@@ -409,6 +413,36 @@ class ZeldaConfigurableEnvironment(gym.Env):
                 current_room = self.bridge.get_memory(0xC63B)  # Current room/screen ID
                 dialogue_state = self.bridge.get_memory(0xC2EF)  # Dialogue/cutscene state
                 dungeon_floor = self.bridge.get_memory(0xC63D)  # Dungeon floor (0 = overworld)
+                
+                # NEW: Track inventory changes (detect item acquisition)
+                current_inventory = []
+                for i in range(16):  # Read 16 bytes of inventory
+                    current_inventory.append(self.bridge.get_memory(0xC682 + i))
+                current_inventory = tuple(current_inventory)
+                
+                if self.last_inventory is not None and current_inventory != self.last_inventory:
+                    # Inventory changed! Check which items were added
+                    for i, (old, new) in enumerate(zip(self.last_inventory, current_inventory)):
+                        if new > 0 and new != old:
+                            item_id = f"inventory_slot_{i}_value_{new}"
+                            if item_id not in self.items_obtained:
+                                self.items_obtained.add(item_id)
+                                # Map some common items
+                                item_names = {
+                                    0: 'None', 1: 'Wooden Sword', 2: 'Bombs', 3: 'Boomerang',
+                                    4: 'Rod of Seasons', 5: 'Feather', 6: 'Shovel', 7: 'Bracelet',
+                                    8: 'Flippers', 9: 'Magnetic Gloves', 10: 'Slingshot',
+                                    20: 'Gnarled Key', 21: 'Floodgate Key', 22: 'Dragon Key'
+                                }
+                                item_name = item_names.get(new, f'Item {new}')
+                                print(f"🎁 NEW ITEM OBTAINED! Slot {i}: {item_name} (value={new})")
+                                
+                                # Check for specific milestone items
+                                if new == 20 or 'Gnarled' in item_name:
+                                    print(f"🔑 MILESTONE: Gnarled Key Obtained from Maku Tree!")
+                                    total_reward += reward_config.get('gnarled_key_obtained', 200.0)
+                
+                self.last_inventory = current_inventory
                 
                 # A) NEW ROOM EXPLORATION REWARD - MASSIVE BONUS (ONLY ONCE PER ROOM!)
                 if current_room not in self.visited_rooms:
