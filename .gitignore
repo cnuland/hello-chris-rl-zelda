@@ -112,7 +112,8 @@ dmypy.json
 # ML/RL Specific
 # Training outputs
 logs/
-checkpoints/
+# Keep checkpoint files in Git (for sharing trained models)
+# checkpoints/ directory is now tracked
 runs/
 wandb/
 mlruns/

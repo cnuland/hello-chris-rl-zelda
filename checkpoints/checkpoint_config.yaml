@@ -1,0 +1,67 @@
+# Checkpoint Configuration
+# Specify which checkpoint to restore from (if any)
+
+# Set to true to enable checkpoint restoration
+enable_restore: false  # Set to true when you want to continue from checkpoint
+
+# Checkpoint details
+# NOTE: Actual Ray checkpoint files are too large for Git (100s of MB)
+# They live on the Ray cluster at /tmp/ray/... and must be accessed there
+checkpoint:
+  # Job ID of the training run that created this checkpoint
+  source_job_id: 'raysubmit_iAkbELhTrRWYuLA2'
+  
+  # Training run date
+  date: '2025-10-16'
+  
+  # Recommended iteration to restore from
+  iteration: 800
+  
+  # Path template (fill in {session_id} from cluster)
+  # To find session_id: oc exec zelda-rl-head-s9rdj -- ls /tmp/ray/ | grep "2025-10-16"
+  path_template: '/tmp/ray/session_2025-10-16_19-21-03_{session_id}/PPO_ZeldaOracleSeasons/PPO_zelda_env_4166c_00000/checkpoint_000800'
+  
+  # Performance at this checkpoint
+  performance:
+    episode_return_mean: 8000.0
+    episode_len_mean: 10000
+    total_steps: 3276800  # 800 × 4096
+    llm_success_rate: 1.0
+    
+  # Configuration used
+  config:
+    workers: 5
+    envs_per_worker: 6
+    batch_size: 4096
+    episode_length: 61440
+    llm_text_probability: 0.02
+    llm_vision_probability: 0.03
+    
+  # Skills learned
+  skills:
+    - exploration_mastered
+    - survival_mastered
+    - llm_alignment_learned
+    - strategic_menu_use
+    - grid_exploration_optimized
+
+# Alternative checkpoints (if preferred)
+alternatives:
+  - iteration: 600
+    performance: 7900.0
+    note: "Earlier in plateau, slightly lower performance"
+    
+  - iteration: 1000
+    performance: 8100.0
+    note: "Later in plateau, marginal improvement"
+    
+  - iteration: 1400
+    performance: 8080.0
+    note: "Latest overnight checkpoint"
+
+# How to use:
+# 1. Set enable_restore: true above
+# 2. Find session_id on cluster: oc exec zelda-rl-head-s9rdj -- ls /tmp/ray/ | grep "2025-10-16"
+# 3. Fill in {session_id} in path_template
+# 4. Set RESTORE_CHECKPOINT in notebook to the filled path
+
