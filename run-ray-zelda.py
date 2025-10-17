@@ -101,6 +101,13 @@ print(f"   Episode length: {ep_length}")
 print(f"   Train batch size per learner: {config.to_dict().get('train_batch_size_per_learner', 'N/A')}")
 print("="*60)
 
+# Checkpoint restoration (optional)
+restore_checkpoint = os.getenv("RESTORE_CHECKPOINT", "")
+if restore_checkpoint:
+    print(f"🔄 RESTORING from checkpoint: {restore_checkpoint}")
+else:
+    print(f"🆕 STARTING fresh training (no checkpoint)")
+
 tune.run(
     "PPO",
     name="PPO_ZeldaOracleSeasons",
@@ -108,6 +115,7 @@ tune.run(
     checkpoint_freq=0,  # Disable checkpointing (local storage not accessible on workers)
     # TODO: Enable S3 checkpointing for production:
     # storage_path="s3://your-bucket/zelda-checkpoints",
+    restore=restore_checkpoint if restore_checkpoint else None,  # Restore from checkpoint if provided
     config=config.to_dict()
 )
 
