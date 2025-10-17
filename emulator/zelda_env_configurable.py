@@ -353,15 +353,21 @@ class ZeldaConfigurableEnvironment(gym.Env):
         # Time penalty (encourages efficiency)
         total_reward += reward_config.get('time_penalty', -0.0001)
         
-        # Movement reward (anti-idle) - MASSIVELY INCREASED!
+        # Movement reward - ONLY if position actually changed!
         movement_reward = reward_config.get('movement', 0.1)
-        total_reward += movement_reward
+        if self.stuck_counter == 0:  # Position changed this step (stuck_counter reset)
+            total_reward += movement_reward
+            # Occasional logging to verify
+            if hasattr(self, 'step_count') and self.step_count % 1000 == 0:
+                print(f"🚶 Movement reward: Position changed (+{movement_reward:.1f})")
+        # else: No movement reward if stuck (position unchanged)
         
-        # NEW: Position stuck penalty (staying in same X,Y)
-        position_stuck_penalty = reward_config.get('position_stuck', -1.0)
+        # Position stuck penalty (staying in same X,Y)
+        # NOTE: Currently disabled (0.0) due to Y-coordinate bug
+        position_stuck_penalty = reward_config.get('position_stuck', 0.0)
         if self.stuck_counter > 5:  # If stuck for more than 5 steps
             total_reward += position_stuck_penalty
-            if self.stuck_counter % 10 == 0:  # Log occasionally
+            if self.stuck_counter % 10 == 0 and position_stuck_penalty != 0:  # Log only if penalty active
                 print(f"⚠️  POSITION STUCK! Same spot for {self.stuck_counter} steps ({position_stuck_penalty:.1f} penalty)")
         
         # SMART Menu usage penalty (pressing START button)
