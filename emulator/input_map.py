@@ -5,7 +5,11 @@ from pyboy.utils import WindowEvent
 
 
 class ZeldaAction(IntEnum):
-    """Action space for Zelda Oracle of Seasons."""
+    """Action space for Zelda Oracle of Seasons.
+    
+    NOTE: START (7) is LLM-exclusive (not in PPO action space).
+    PPO can only select actions 0-6. LLM can trigger START directly.
+    """
     NOP = 0
     UP = 1
     DOWN = 2
@@ -13,7 +17,22 @@ class ZeldaAction(IntEnum):
     RIGHT = 4
     A = 5  # Action button (sword, interact)
     B = 6  # Secondary action (items)
-    START = 7  # Pause menu / change gear
+    START = 7  # LLM-exclusive! PPO cannot select this action
+
+
+# PPO action space (excludes START)
+PPO_ACTIONS = [
+    ZeldaAction.NOP,
+    ZeldaAction.UP,
+    ZeldaAction.DOWN,
+    ZeldaAction.LEFT,
+    ZeldaAction.RIGHT,
+    ZeldaAction.A,
+    ZeldaAction.B,
+]  # 7 actions (0-6), START excluded
+
+# LLM can suggest any action including START
+LLM_ACTIONS = list(ZeldaAction)  # All 8 actions (0-7)
 
 
 # Mapping from action enum to PyBoy WindowEvent

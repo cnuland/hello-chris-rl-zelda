@@ -635,7 +635,11 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
             a_item_name = item_names.get(a_button_item, f'Item{a_button_item}')
             b_item_name = item_names.get(b_button_item, f'Item{b_button_item}')
             
-            print(f"📤 SENDING TO LLM: {location_name}, health={health}/{max_health}, pos=({x},{y}), equipped=[A:{a_item_name}, B:{b_item_name}]")
+            # Menu state detection (for LLM menu control)
+            menu_state = game_state.get('game', {}).get('menu_state', 0)
+            menu_status = "MENU_OPEN" if menu_state > 0 else "GAMEPLAY"
+            
+            print(f"📤 SENDING TO LLM: {location_name}, health={health}/{max_health}, pos=({x},{y}), equipped=[A:{a_item_name}, B:{b_item_name}], state={menu_status}")
             
             # Format prompt with game state
             user_prompt = self.user_prompt_template.format(
@@ -649,7 +653,8 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                 enemy_count=enemy_count,
                 item_count=item_count,
                 a_button_item=a_item_name,
-                b_button_item=b_item_name
+                b_button_item=b_item_name,
+                menu_status=menu_status
             )
             
             # Prepare API request (different format for vision vs text-only)
@@ -889,12 +894,22 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                     print(f"👁️  LLM SEES: {scene_desc}")
                     print(f"💡 LLM SUGGESTS: {llm_action}")
                     
-                    # Compute alignment bonus (vision worth 10x more than text)
-                    llm_bonus = self.compute_llm_alignment_bonus(action, llm_action, is_vision=is_vision_step)
-                    
-                    if llm_bonus > 0:
-                        bonus_type = "VISION" if is_vision_step else "TEXT"
-                        print(f"✅ PPO action {action} MATCHES {bonus_type} LLM → +{llm_bonus:.1f} bonus!")
+                    # LLM-EXCLUSIVE START BUTTON HANDLING
+                    # If LLM suggests START, execute it immediately (bypass PPO)
+                    if llm_action and llm_action.upper() == "START":
+                        from emulator.input_map import ZeldaAction
+                        print(f"🎮 LLM MENU COMMAND: Executing START (open/close menu)")
+                        # Execute START button press
+                        self.bridge.step(ZeldaAction.START)
+                        # No alignment bonus - this is a command, not a suggestion
+                        llm_bonus = 0.0
+                    else:
+                        # Normal alignment bonus for non-START actions
+                        llm_bonus = self.compute_llm_alignment_bonus(action, llm_action, is_vision=is_vision_step)
+                        
+                        if llm_bonus > 0:
+                            bonus_type = "VISION" if is_vision_step else "TEXT"
+                            print(f"✅ PPO action {action} MATCHES {bonus_type} LLM → +{llm_bonus:.1f} bonus!")
                 else:
                     # LLM failed, log it
                     self.llm_call_count += 1  # Count failed attempts too

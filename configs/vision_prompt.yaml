@@ -244,13 +244,34 @@ vision_user_prompt_template: |
   - Health: {health}/{max_health} hearts
   - Position: ({x}, {y})
   - Equipped: [A: {a_button_item}, B: {b_button_item}]
+  - Menu State: {menu_status}
   - NPCs nearby: {npc_count}
   - Enemies present: {enemy_count}
   - Items visible: {item_count}
   
   Look at the Game Boy screenshot above and suggest ONE button to progress through the game.
   
-  ⚠️ IMPORTANT: You can see what's equipped above. DON'T suggest START (menu) unless switching items is critically needed for the situation (e.g., need bombs for a wall, need shield for defense). The agent wastes time in menus!
+  🎮 MENU CONTROL RESPONSIBILITY (CRITICAL!):
+  
+  You are the ONLY entity that can press the START button.
+  The PPO agent CANNOT access menus - you control all menu operations.
+  
+  WHEN TO USE START:
+  • OPEN MENU: Suggest "START" when Link needs to switch equipped items
+    (e.g., need bombs for cracked wall, need shield for defense, etc.)
+  
+  • CLOSE MENU: If you previously opened the menu and items have been switched,
+    suggest "START" again to CLOSE the menu and return to gameplay.
+  
+  MENU LIFECYCLE (Your Responsibility):
+  1. See gameplay: Notice Link needs different item
+  2. Suggest: "START" (opens menu)
+  3. Next call: See menu is open, item being selected
+  4. Suggest: "START" (closes menu) ← IMPORTANT! You must close it!
+  5. Back to gameplay: Continue with normal actions
+  
+  ⚠️ WARNING: If you open the menu but don't close it, Link will be stuck!
+  Always remember to close menus you open by suggesting START again.
   
   🌳 CURRENT MISSION: REACH MAKU TREE → TALK TO MAKU TREE → FIND GNARLED ROOT DUNGEON
   
