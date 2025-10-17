@@ -108,13 +108,21 @@ if restore_checkpoint:
 else:
     print(f"🆕 STARTING fresh training (no checkpoint)")
 
+# Configure checkpoint storage
+# Save to local directory (will be in working_dir, uploaded to Ray cluster)
+checkpoint_config = {
+    "checkpoint_frequency": 25,  # Save every 25 iterations
+    "checkpoint_at_end": True,   # Save final checkpoint
+    "num_to_keep": 5,            # Keep last 5 checkpoints
+}
+
+print(f"💾 Checkpoint config: Saving every 25 iterations, keeping last 5")
+
 tune.run(
     "PPO",
     name="PPO_ZeldaOracleSeasons",
     stop={"timesteps_total": ep_length * 10000},  # 300M timesteps total
-    checkpoint_freq=0,  # Disable checkpointing (local storage not accessible on workers)
-    # TODO: Enable S3 checkpointing for production:
-    # storage_path="s3://your-bucket/zelda-checkpoints",
+    checkpoint_config=checkpoint_config,  # Enable checkpointing
     restore=restore_checkpoint if restore_checkpoint else None,  # Restore from checkpoint if provided
     config=config.to_dict()
 )
