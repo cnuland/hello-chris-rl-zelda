@@ -295,6 +295,9 @@ class ZeldaStateEncoder:
         # Nearby tiles (for LLM context)
         state['environment'] = self._get_nearby_tiles(pyboy_bridge)
         
+        # Add dialogue/cutscene state for quest tracking
+        state['environment']['dialogue_state'] = pyboy_bridge.get_memory(0xC2EF)  # CUTSCENE_INDEX
+        
         # Structured entities (enemies, items) from sprites
         if self.use_structured_entities:
             state['entities'] = self._get_structured_entities(pyboy_bridge)
