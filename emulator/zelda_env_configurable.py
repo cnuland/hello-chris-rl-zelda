@@ -428,12 +428,13 @@ class ZeldaConfigurableEnvironment(gym.Env):
                                 self.items_obtained.add(item_id)
                                 # CORRECTED item mapping (hex IDs from ZeldaXtreme + DataCrystal)
                                 # Source: https://www.zeldaxtreme.com/oracle-of-seasons/gameshark-codes/
+                                # Note: Verified through manual testing with actual game
                                 item_names = {
                                     0x00: 'None', 
                                     0x01: 'Shield L1',
                                     0x03: 'Bombs',
-                                    0x04: 'Wooden Sword',      # Level 1 Sword
-                                    0x05: 'Sword L3',          # Level 3 Sword
+                                    0x04: 'Sword L2',          # Level 2 Sword (Noble Sword) - unverified
+                                    0x05: 'Wooden Sword',      # Level 1 Sword (Wooden Sword) - VERIFIED!
                                     0x06: 'Boomerang',
                                     0x07: 'Rod of Seasons',    # Rod (quest item!)
                                     0x08: 'Magnetic Gloves',
@@ -455,7 +456,7 @@ class ZeldaConfigurableEnvironment(gym.Env):
                                 print(f"🎁 NEW ITEM OBTAINED! Slot {i}: {item_name} (ID=0x{new:02X}, dec={new})")
                                 
                                 # Check for specific milestone items
-                                if new == 0x04:  # Wooden Sword (Level 1)
+                                if new == 0x05:  # Wooden Sword (Level 1) - VERIFIED via manual test!
                                     if not self.milestones.get('sword_obtained'):
                                         print(f"⚔️ MILESTONE: Wooden Sword Obtained!")
                                         self.milestones['sword_obtained'] = True

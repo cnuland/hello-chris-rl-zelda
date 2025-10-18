@@ -630,11 +630,13 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
             
             # CORRECTED item mapping (based on ZeldaXtreme Gameshark codes + DataCrystal RAM map)
             # Source: https://www.zeldaxtreme.com/oracle-of-seasons/gameshark-codes/
+            # Note: Verified through manual testing with actual game
             item_names = {
                 0x00: 'None',           # Empty slot
                 0x01: 'Shield L1',      # Level 1 Shield
                 0x03: 'Bombs',          # Have Bombs
-                0x05: 'Sword L3',       # Level 3 Sword (Master Sword)
+                0x04: 'Sword L2',       # Level 2 Sword (Noble Sword) - unverified
+                0x05: 'Wooden Sword',   # Level 1 Sword (Wooden Sword) - VERIFIED!
                 0x06: 'Boomerang',      # Boomerang
                 0x07: 'Rod',            # Rod of Seasons
                 0x08: 'Mag Glove',      # Magnetic Gauntlet
