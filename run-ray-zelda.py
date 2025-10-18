@@ -108,19 +108,31 @@ if restore_checkpoint:
 else:
     print(f"🆕 STARTING fresh training (no checkpoint)")
 
-# Configure checkpoint storage
-# NOTE: Checkpointing disabled for now - Ray workers don't have shared filesystem
-# Episode metadata is still being saved to S3 via session_manager
-# TODO: Enable once we have proper S3/MinIO storage configured for Ray checkpoints
+# Configure checkpoint storage to MinIO/S3
+# Use S3 for distributed checkpoint storage (no shared filesystem needed!)
+s3_endpoint = os.getenv("S3_ENDPOINT_URL", "http://172.30.45.38:9000")
+s3_checkpoint_bucket = "sessions"  # Use existing 'sessions' bucket
+s3_checkpoint_path = f"s3://{s3_checkpoint_bucket}/ray_checkpoints/PPO_ZeldaOracleSeasons"
 
-print(f"💾 Checkpoint config: Disabled (no shared filesystem)")
-print(f"   Episode metadata still saving to S3: s3://sessions/")
+print(f"💾 Checkpoint config: S3/MinIO storage enabled")
+print(f"   Storage endpoint: {s3_endpoint}")
+print(f"   Storage path: {s3_checkpoint_path}")
+print(f"   Checkpoint frequency: Every 50 iterations")
+print(f"   Keep last: 5 checkpoints")
+
+# Import required for S3 storage
+from ray.train import CheckpointConfig
 
 tune.run(
     "PPO",
     name="PPO_ZeldaOracleSeasons",
     stop={"timesteps_total": ep_length * 10000},  # 300M timesteps total
-    checkpoint_freq=0,  # Disabled - no shared filesystem available
+    storage_path=s3_checkpoint_path,  # S3/MinIO storage for checkpoints
+    checkpoint_config=CheckpointConfig(
+        num_to_keep=5,  # Keep last 5 checkpoints
+        checkpoint_frequency=50,  # Save every 50 iterations
+        checkpoint_at_end=True,  # Save final checkpoint
+    ),
     restore=restore_checkpoint if restore_checkpoint else None,  # Restore from checkpoint if provided
     config=config.to_dict()
 )
