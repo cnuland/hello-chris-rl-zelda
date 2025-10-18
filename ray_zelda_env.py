@@ -628,10 +628,27 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
             a_button_item = active_items.get('a_button', 0)
             b_button_item = active_items.get('b_button', 0)
             
-            # Simple item mapping (common items)
+            # CORRECTED item mapping (based on ZeldaXtreme Gameshark codes + DataCrystal RAM map)
+            # Source: https://www.zeldaxtreme.com/oracle-of-seasons/gameshark-codes/
             item_names = {
-                0: 'None', 1: 'Sword', 2: 'Bombs', 3: 'Shield', 4: 'Boomerang',
-                5: 'Rod', 6: 'Seeds', 7: 'Feather', 8: 'Shovel', 9: 'Bracelet'
+                0x00: 'None',           # Empty slot
+                0x01: 'Shield L1',      # Level 1 Shield
+                0x03: 'Bombs',          # Have Bombs
+                0x05: 'Sword L3',       # Level 3 Sword (Master Sword)
+                0x06: 'Boomerang',      # Boomerang
+                0x07: 'Rod',            # Rod of Seasons
+                0x08: 'Mag Glove',      # Magnetic Gauntlet
+                0x0A: 'Switch Hook',    # Switch Hook (hookshot variant)
+                0x0C: 'Biggoron Sword', # Biggoron's Sword
+                0x0D: 'Bombachu',       # Bombachu (explosive)
+                0x0E: 'Wood Shield',    # Wood Shield
+                0x13: 'Slingshot',      # Level-1 Slingshot
+                0x14: 'Gnarled Key',    # Gnarled Key (from Maku Tree!)
+                0x15: 'Shovel',         # Shovel
+                0x16: 'Bracelet',       # Power Bracelet
+                0x17: 'Feather',        # Roc's Feather (DUNGEON 3 item!)
+                0x19: 'Seed Satchel',   # Seed Satchel w/ Ember Seeds
+                # Add more as needed from ZeldaXtreme list
             }
             a_item_name = item_names.get(a_button_item, f'Item{a_button_item}')
             b_item_name = item_names.get(b_button_item, f'Item{b_button_item}')

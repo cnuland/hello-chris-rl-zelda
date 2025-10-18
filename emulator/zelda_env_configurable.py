@@ -171,6 +171,9 @@ class ZeldaConfigurableEnvironment(gym.Env):
         # Inventory change tracking (for item acquisition logging)
         self.last_inventory = None          # Track inventory state (16 bytes)
         self.items_obtained = set()         # Track unique items obtained this episode
+        
+        # Combat tracking (for enemy kill rewards)
+        self.last_enemies_killed = 0        # Track cumulative enemy kills (2-byte counter at 0xC620)
 
     def _get_default_config(self) -> Dict[str, Any]:
         """Get default configuration for pure RL mode."""
@@ -249,6 +252,10 @@ class ZeldaConfigurableEnvironment(gym.Env):
         # Track initial death count to detect when Link dies
         # TOTAL_DEATHS is at 0xC61E (2 bytes)
         self.initial_death_count = self.bridge.get_memory(0xC61E) + (self.bridge.get_memory(0xC61F) << 8)
+        
+        # Track initial enemy kill count for combat rewards
+        # ENEMIES_KILLED is at 0xC620 (2 bytes, little-endian)
+        self.last_enemies_killed = self.bridge.get_memory(0xC620) + (self.bridge.get_memory(0xC621) << 8)
         
         # Get initial observation
         obs = self._get_observation()
@@ -419,22 +426,54 @@ class ZeldaConfigurableEnvironment(gym.Env):
                             item_id = f"inventory_slot_{i}_value_{new}"
                             if item_id not in self.items_obtained:
                                 self.items_obtained.add(item_id)
-                                # Map some common items
+                                # CORRECTED item mapping (hex IDs from ZeldaXtreme + DataCrystal)
+                                # Source: https://www.zeldaxtreme.com/oracle-of-seasons/gameshark-codes/
                                 item_names = {
-                                    0: 'None', 1: 'Wooden Sword', 2: 'Bombs', 3: 'Boomerang',
-                                    4: 'Rod of Seasons', 5: 'Feather', 6: 'Shovel', 7: 'Bracelet',
-                                    8: 'Flippers', 9: 'Magnetic Gloves', 10: 'Slingshot',
-                                    20: 'Gnarled Key', 21: 'Floodgate Key', 22: 'Dragon Key'
+                                    0x00: 'None', 
+                                    0x01: 'Shield L1',
+                                    0x03: 'Bombs',
+                                    0x04: 'Wooden Sword',      # Level 1 Sword
+                                    0x05: 'Sword L3',          # Level 3 Sword
+                                    0x06: 'Boomerang',
+                                    0x07: 'Rod of Seasons',    # Rod (quest item!)
+                                    0x08: 'Magnetic Gloves',
+                                    0x0A: 'Switch Hook',
+                                    0x0C: 'Biggoron Sword',
+                                    0x0D: 'Bombachu',
+                                    0x0E: 'Wood Shield',
+                                    0x13: 'Slingshot',
+                                    0x14: 'Gnarled Key',       # KEY! From Maku Tree (decimal 20)
+                                    0x15: 'Shovel',
+                                    0x16: 'Power Bracelet',
+                                    0x17: 'Roc\'s Feather',    # DUNGEON 3 item (decimal 23)
+                                    0x19: 'Seed Satchel',
+                                    # Future dungeon keys (for tracking)
+                                    # 0x15: 'Floodgate Key',   # Dungeon 2 key
+                                    # 0x16: 'Dragon Key',      # Dungeon 3 key
                                 }
-                                item_name = item_names.get(new, f'Item {new}')
-                                print(f"🎁 NEW ITEM OBTAINED! Slot {i}: {item_name} (value={new})")
+                                item_name = item_names.get(new, f'Item 0x{new:02X}')
+                                print(f"🎁 NEW ITEM OBTAINED! Slot {i}: {item_name} (ID=0x{new:02X}, dec={new})")
                                 
                                 # Check for specific milestone items
-                                if new == 20 or 'Gnarled' in item_name:
-                                    print(f"🔑 MILESTONE: Gnarled Key Obtained from Maku Tree!")
+                                if new == 0x04:  # Wooden Sword (Level 1)
+                                    if not self.milestones.get('sword_obtained'):
+                                        print(f"⚔️ MILESTONE: Wooden Sword Obtained!")
+                                        self.milestones['sword_obtained'] = True
+                                        total_reward += reward_config.get('sword_obtained', 200.0)
+                                elif new == 0x14:  # Gnarled Key (hex 0x14 = decimal 20)
+                                    print(f"🔑🌳 MILESTONE: Gnarled Key Obtained from Maku Tree!")
                                     total_reward += reward_config.get('gnarled_key_obtained', 200.0)
                 
                 self.last_inventory = current_inventory
+                
+                # NEW: Track enemy kills for combat rewards
+                current_enemies_killed = self.bridge.get_memory(0xC620) + (self.bridge.get_memory(0xC621) << 8)
+                if current_enemies_killed > self.last_enemies_killed:
+                    kills_gained = current_enemies_killed - self.last_enemies_killed
+                    combat_reward = reward_config.get('enemy_kill', 3.0) * kills_gained
+                    total_reward += combat_reward
+                    print(f"⚔️  ENEMY KILLED! Total: {self.last_enemies_killed} → {current_enemies_killed} (+{kills_gained}) | Reward: +{combat_reward:.1f}")
+                    self.last_enemies_killed = current_enemies_killed
                 
                 # A) NOVELTY-BASED EXPLORATION REWARD (Time-decay system)
                 # Calculate room novelty (freshness) based on time since last visit
