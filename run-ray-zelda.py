@@ -2,7 +2,7 @@
 Ray RLlib Training Script for Zelda Oracle of Seasons
 Uses vector observations + vision LLM (matches existing hybrid approach)
 
-Cache bust: 2025-10-15 05:00 - Debug health values sent to LLM
+Cache bust: 2025-10-18 18:00 - Enable S3/MinIO checkpointing with credentials
 """
 
 from pathlib import Path
@@ -19,6 +19,9 @@ from ray.tune.registry import register_env
 from ray import tune
 from ray.rllib.models import ModelCatalog
 from ray_zelda_model import ZeldaMLPModel
+
+# Import for S3 filesystem configuration
+import pyarrow.fs as pafs
 
 # Register custom model
 ModelCatalog.register_custom_model("zelda_mlp", ZeldaMLPModel)
@@ -108,16 +111,28 @@ if restore_checkpoint:
 else:
     print(f"🆕 STARTING fresh training (no checkpoint)")
 
-# Configure checkpoint storage
-# Use LOCAL filesystem on Ray head node (simple and reliable)
-# Checkpoints can be manually downloaded via oc rsync after training
-local_checkpoint_path = "/tmp/ray_checkpoints/PPO_ZeldaOracleSeasons"
+# Configure checkpoint storage to MinIO S3
+# Create S3FileSystem with explicit credentials
+s3_endpoint = os.getenv("S3_ENDPOINT_URL", "http://172.30.45.38:9000")
+s3_access_key = os.getenv("S3_ACCESS_KEY_ID", "admin")
+s3_secret_key = os.getenv("S3_SECRET_ACCESS_KEY", "zelda-rl-minio-2024")
+s3_bucket = "sessions"  # Use existing 'sessions' bucket
+s3_checkpoint_path = f"s3://{s3_bucket}/ray_checkpoints/PPO_ZeldaOracleSeasons"
 
-print(f"💾 Checkpoint config: Local filesystem (Ray head node)")
-print(f"   Storage path: {local_checkpoint_path}")
+# Configure S3 filesystem with MinIO endpoint and credentials
+s3_fs = pafs.S3FileSystem(
+    endpoint_override=s3_endpoint.replace("http://", "").replace("https://", ""),
+    access_key=s3_access_key,
+    secret_key=s3_secret_key,
+    scheme="http",  # MinIO uses HTTP not HTTPS
+    region="us-east-1",
+)
+
+print(f"💾 Checkpoint config: S3/MinIO storage (distributed)")
+print(f"   Storage endpoint: {s3_endpoint}")
+print(f"   Storage path: {s3_checkpoint_path}")
 print(f"   Checkpoint frequency: Every 50 iterations")
 print(f"   Keep last: 5 checkpoints")
-print(f"   📥 Download later with: oc rsync zelda-rl-head-s9rdj:{local_checkpoint_path} ./checkpoints/")
 
 # Import required for checkpoint config
 from ray.train import CheckpointConfig
@@ -126,7 +141,8 @@ tune.run(
     "PPO",
     name="PPO_ZeldaOracleSeasons",
     stop={"timesteps_total": ep_length * 10000},  # 300M timesteps total
-    storage_path=local_checkpoint_path,  # Local storage on Ray head node
+    storage_path=s3_checkpoint_path,  # S3/MinIO storage
+    storage_filesystem=s3_fs,  # Provide configured S3 filesystem
     checkpoint_config=CheckpointConfig(
         num_to_keep=5,  # Keep last 5 checkpoints
         checkpoint_frequency=50,  # Save every 50 iterations
