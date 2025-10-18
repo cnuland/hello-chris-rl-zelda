@@ -62,6 +62,7 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         # Initialize milestone tracking
         self.milestones = {
             'maku_tree_entered': False,
+            'maku_tree_dialogue': False,  # NEW: Talked to Maku Tree
             'dungeon_entered': False,
             'sword_usage': 0
         }
@@ -951,9 +952,18 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                             location_name = f'Room {room_id}'
                         
                         # Update milestones
-                        if 'Maku' in location_name and not self.milestones['maku_tree_entered']:
-                            self.milestones['maku_tree_entered'] = True
-                            print(f"🌳 MILESTONE: Maku Tree Entered!")
+                        if 'Maku' in location_name:
+                            if not self.milestones['maku_tree_entered']:
+                                self.milestones['maku_tree_entered'] = True
+                                print(f"🌳 MILESTONE: Maku Tree Entered!")
+                            
+                            # Check for dialogue with Maku Tree
+                            dialogue_state = game_state.get('environment', {}).get('dialogue_state', 0)
+                            if dialogue_state > 0 and not self.milestones['maku_tree_dialogue']:
+                                self.milestones['maku_tree_dialogue'] = True
+                                print(f"🌳🗨️  MILESTONE: Talked to Maku Tree! (+300.0 reward)")
+                                # This is a major milestone - talking actually happens!
+                        
                         if 0x50 <= room_id <= 0x5F and not self.milestones['dungeon_entered']:
                             self.milestones['dungeon_entered'] = True
                             print(f"🏰 MILESTONE: Dungeon Entered!")

@@ -146,6 +146,11 @@ class ZeldaConfigurableEnvironment(gym.Env):
         self.last_dialogue_state = 0  # Track NPC dialogue interactions
         self.last_room_id = None  # Track room transitions
         
+        # Novelty-based exploration (time-decay system)
+        self.room_last_visit = {}  # {room_id: step_count} - when room was last visited
+        self.room_visit_count = {}  # {room_id: visit_count} - how many times visited
+        self.global_step_count = 0  # Total steps across all episodes (for novelty)
+        
         # LLM guidance tracking - MASSIVE EMPHASIS SYSTEM
         self.last_llm_suggestion = None  # Store latest LLM guidance
         self.steps_since_llm_call = 0    # Count steps since last LLM call
@@ -356,8 +361,26 @@ class ZeldaConfigurableEnvironment(gym.Env):
         total_reward += reward_config.get('time_penalty', -0.0001)
         
         # Movement reward - ONLY if position actually changed!
-        movement_reward = reward_config.get('movement', 0.1)
+        # Adjusted based on room freshness (novelty-based)
         if self.stuck_counter == 0:  # Position changed this step (stuck_counter reset)
+            # Get current room novelty to adjust movement reward
+            try:
+                current_room = self.bridge.get_memory(0xC63B) if hasattr(self, 'bridge') else None
+                if current_room and current_room in self.room_last_visit:
+                    steps_since = self.global_step_count - self.room_last_visit.get(current_room, 0)
+                    room_novelty = min(1.0, steps_since / 1000.0)
+                    
+                    # Higher movement reward in fresh rooms, lower in stale rooms
+                    if room_novelty > 0.5:
+                        movement_reward = reward_config.get('movement_fresh', 0.15)
+                    else:
+                        movement_reward = reward_config.get('movement_stale', 0.05)
+                else:
+                    # Default if can't determine novelty
+                    movement_reward = reward_config.get('movement', 0.1)
+            except:
+                movement_reward = reward_config.get('movement', 0.1)
+            
             total_reward += movement_reward
             # Occasional logging to verify
             if hasattr(self, 'step_count') and self.step_count % 1000 == 0:
@@ -413,20 +436,44 @@ class ZeldaConfigurableEnvironment(gym.Env):
                 
                 self.last_inventory = current_inventory
                 
-                # A) NEW ROOM EXPLORATION REWARD - MASSIVE BONUS (ONLY ONCE PER ROOM!)
-                if current_room not in self.visited_rooms:
+                # A) NOVELTY-BASED EXPLORATION REWARD (Time-decay system)
+                # Calculate room novelty (freshness) based on time since last visit
+                is_first_visit = current_room not in self.visited_rooms
+                
+                # Increment global step counter for novelty tracking
+                self.global_step_count += 1
+                
+                if is_first_visit:
+                    # Brand new room - HUGE reward!
                     self.visited_rooms.add(current_room)
-                    exploration_reward = reward_config.get('new_room_discovery', 20.0)
+                    self.room_visit_count[current_room] = 1
+                    self.room_last_visit[current_room] = self.global_step_count
+                    
+                    exploration_reward = reward_config.get('new_room_discovery', 50.0)
                     total_reward += exploration_reward
                     print(f"🗺️  NEW ROOM DISCOVERED! Room {current_room} (+{exploration_reward:.1f} reward) | Total visited: {len(self.visited_rooms)}")
+                    
                     # Reset grid squares for new room
                     self.visited_grid_squares[current_room] = set()
                 else:
-                    # Apply revisit penalty (discourage loops and farming)
-                    revisit_penalty = reward_config.get('revisit_penalty', -0.5)
-                    total_reward += revisit_penalty
-                    if self.steps_since_last_llm_call < 5 and self.last_room_id != current_room:
-                        print(f"⚠️  REVISITING ROOM {current_room} ({revisit_penalty:.1f} penalty)")
+                    # Revisiting - apply novelty-based reward
+                    steps_since_visit = self.global_step_count - self.room_last_visit.get(current_room, 0)
+                    novelty = min(1.0, steps_since_visit / 1000.0)  # Full novelty after 1000 steps
+                    
+                    self.room_visit_count[current_room] = self.room_visit_count.get(current_room, 0) + 1
+                    self.room_last_visit[current_room] = self.global_step_count
+                    
+                    # Novelty-based reward (replaces static revisit penalty)
+                    base_room_reward = reward_config.get('room_novelty_reward', 20.0)
+                    novelty_reward = base_room_reward * novelty
+                    total_reward += novelty_reward
+                    
+                    if novelty < 0.3:  # Low novelty (visited recently)
+                        if self.steps_since_last_llm_call < 5:
+                            print(f"⚠️  Room {current_room} is STALE (novelty={novelty:.2f}, {steps_since_visit} steps ago) (+{novelty_reward:.1f})")
+                    elif novelty > 0.8:  # High novelty (visited long ago)
+                        if self.room_visit_count[current_room] % 3 == 0:  # Log occasionally
+                            print(f"✨ Room {current_room} is FRESH again (novelty={novelty:.2f}, {steps_since_visit} steps ago) (+{novelty_reward:.1f})")
                 
                 # NEW: Grid exploration within room (encourage thorough exploration)
                 player_x = self.bridge.get_memory(0xC4AC)
