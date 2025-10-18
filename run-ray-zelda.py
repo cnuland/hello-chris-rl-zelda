@@ -108,26 +108,25 @@ if restore_checkpoint:
 else:
     print(f"🆕 STARTING fresh training (no checkpoint)")
 
-# Configure checkpoint storage to MinIO/S3
-# Use S3 for distributed checkpoint storage (no shared filesystem needed!)
-s3_endpoint = os.getenv("S3_ENDPOINT_URL", "http://172.30.45.38:9000")
-s3_checkpoint_bucket = "sessions"  # Use existing 'sessions' bucket
-s3_checkpoint_path = f"s3://{s3_checkpoint_bucket}/ray_checkpoints/PPO_ZeldaOracleSeasons"
+# Configure checkpoint storage
+# Use LOCAL filesystem on Ray head node (simple and reliable)
+# Checkpoints can be manually downloaded via oc rsync after training
+local_checkpoint_path = "/tmp/ray_checkpoints/PPO_ZeldaOracleSeasons"
 
-print(f"💾 Checkpoint config: S3/MinIO storage enabled")
-print(f"   Storage endpoint: {s3_endpoint}")
-print(f"   Storage path: {s3_checkpoint_path}")
+print(f"💾 Checkpoint config: Local filesystem (Ray head node)")
+print(f"   Storage path: {local_checkpoint_path}")
 print(f"   Checkpoint frequency: Every 50 iterations")
 print(f"   Keep last: 5 checkpoints")
+print(f"   📥 Download later with: oc rsync zelda-rl-head-s9rdj:{local_checkpoint_path} ./checkpoints/")
 
-# Import required for S3 storage
+# Import required for checkpoint config
 from ray.train import CheckpointConfig
 
 tune.run(
     "PPO",
     name="PPO_ZeldaOracleSeasons",
     stop={"timesteps_total": ep_length * 10000},  # 300M timesteps total
-    storage_path=s3_checkpoint_path,  # S3/MinIO storage for checkpoints
+    storage_path=local_checkpoint_path,  # Local storage on Ray head node
     checkpoint_config=CheckpointConfig(
         num_to_keep=5,  # Keep last 5 checkpoints
         checkpoint_frequency=50,  # Save every 50 iterations
