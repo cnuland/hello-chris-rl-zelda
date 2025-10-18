@@ -640,16 +640,15 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
             menu_state = game_state.get('game', {}).get('menu_state', 0)
             menu_status = "MENU_OPEN" if menu_state > 0 else "GAMEPLAY"
             
-            print(f"📤 SENDING TO LLM: {location_name}, health={health}/{max_health}, pos=({x},{y}), equipped=[A:{a_item_name}, B:{b_item_name}], state={menu_status}")
+            print(f"📤 SENDING TO LLM: {location_name}, health={health}/{max_health}, equipped=[A:{a_item_name}, B:{b_item_name}], state={menu_status}")
             
             # Format prompt with game state
+            # NOTE: X,Y removed - Y position is broken (stuck at 0), misleading to send
             user_prompt = self.user_prompt_template.format(
                 location=location_name,
                 cave_hint='',  # No cave_hint in current structure
                 health=health,
                 max_health=max_health,
-                x=x,
-                y=y,
                 npc_count=npc_count,
                 enemy_count=enemy_count,
                 item_count=item_count,
@@ -987,10 +986,7 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                             # Game State (with correct object formats)
                             'location': location_name,
                             'room_id': room_id,
-                            'position': {  # HUD expects {x, y} object (pixel coordinates within current screen)
-                                'x': player_data.get('x', 0),
-                                'y': player_data.get('y', 0)
-                            },
+                            'position': '-',  # Y position broken (stuck at 0) - send placeholder
                             'health': {  # HUD expects {current, max} object
                                 'current': player_data.get('health', 0),
                                 'max': player_data.get('max_health', 0)
@@ -1114,10 +1110,7 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                             'episode_reward': self._total_reward,
                             'location': location_name,
                             'room_id': room_id,
-                            'position': {
-                                'x': player_data.get('x', 0),
-                                'y': player_data.get('y', 0)
-                            },
+                            'position': '-',  # Y position broken (stuck at 0) - send placeholder
                             'health': {
                                 'current': player_data.get('health', 0),
                                 'max': player_data.get('max_health', 0)

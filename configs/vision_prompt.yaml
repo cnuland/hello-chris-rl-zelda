@@ -242,7 +242,6 @@ vision_user_prompt_template: |
   🎮 GAME STATE:
   - Location: {location} {cave_hint}
   - Health: {health}/{max_health} hearts
-  - Position: ({x}, {y})
   - Equipped: [A: {a_button_item}, B: {b_button_item}]
   - Menu State: {menu_status}
   - NPCs nearby: {npc_count}
