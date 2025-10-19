@@ -2,7 +2,7 @@
 Ray RLlib Training Script for Zelda Oracle of Seasons
 Uses vector observations + vision LLM (matches existing hybrid approach)
 
-Cache bust: 2025-10-18 18:00 - Enable S3/MinIO checkpointing with credentials
+Cache bust: 2025-10-15 05:00 - Debug health values sent to LLM
 """
 
 from pathlib import Path
@@ -109,17 +109,18 @@ else:
     print(f"🆕 STARTING fresh training (no checkpoint)")
 
 # Configure checkpoint storage
-# DISABLED for now due to cluster filesystem limitations
-# Checkpoints can be manually saved via custom callback in future
-print(f"💾 Checkpoint config: DISABLED (cluster limitations)")
-print(f"   Training will run without checkpoints for now")
-print(f"   Focus: Get training running for demo data collection")
+# NOTE: Checkpointing disabled for now - Ray workers don't have shared filesystem
+# Episode metadata is still being saved to S3 via session_manager
+# TODO: Enable once we have proper S3/MinIO storage configured for Ray checkpoints
+
+print(f"💾 Checkpoint config: Disabled (no shared filesystem)")
+print(f"   Episode metadata still saving to S3: s3://sessions/")
 
 tune.run(
     "PPO",
     name="PPO_ZeldaOracleSeasons",
     stop={"timesteps_total": ep_length * 10000},  # 300M timesteps total
-    checkpoint_freq=0,  # Disabled
+    checkpoint_freq=0,  # Disabled - no shared filesystem available
     restore=restore_checkpoint if restore_checkpoint else None,  # Restore from checkpoint if provided
     config=config.to_dict()
 )
