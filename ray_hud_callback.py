@@ -50,6 +50,9 @@ class ZeldaHUDCallback(DefaultCallbacks):
         self.hud_client = None
         self._hud_url = os.environ.get('HUD_URL') if HUD_AVAILABLE else None
         self._hud_initialized = False
+        self._session_manager = None
+        self._last_checkpoint_iter = 0
+        self.CHECKPOINT_FREQUENCY = 50  # Save model weights every 50 iterations
         
         # Don't initialize HUD client here - wait until we're on the driver
         # This prevents all workers from trying to register sessions
@@ -188,5 +191,62 @@ class ZeldaHUDCallback(DefaultCallbacks):
         except Exception as e:
             print(f"❌ Error sending data to HUD: {e}")
         
+        # Save model checkpoint to S3 every N iterations
+        if iteration > 0 and iteration % self.CHECKPOINT_FREQUENCY == 0:
+            if iteration > self._last_checkpoint_iter:  # Avoid duplicate saves
+                self._save_model_checkpoint(algorithm, iteration, result)
+                self._last_checkpoint_iter = iteration
+        
         # Note: Workers will merge vision data + game state with these training metrics
+    
+    def _save_model_checkpoint(self, algorithm, iteration, result):
+        """Save model weights to S3/MinIO via SessionManager."""
+        try:
+            # Initialize SessionManager if not already done
+            if self._session_manager is None:
+                from session_manager import SessionManager
+                import time
+                session_id = f"ray_training_{int(time.time())}"
+                self._session_manager = SessionManager(session_id=session_id)
+                
+                if not self._session_manager.enabled:
+                    print(f"⚠️  SessionManager not enabled, skipping checkpoint save")
+                    return
+            
+            # Get model weights from algorithm
+            print(f"💾 Saving checkpoint at iteration {iteration}...")
+            
+            # Get model state dict
+            model_weights = algorithm.get_policy().get_weights()
+            
+            # Serialize to bytes
+            import pickle
+            model_bytes = pickle.dumps(model_weights)
+            
+            # Save checkpoint with model weights
+            checkpoint_data = {
+                'iteration': iteration,
+                'timesteps_total': result.get('timesteps_total', 0),
+                'episode_return_mean': result.get('episode_return_mean', 0.0),
+                'episode_len_mean': result.get('episode_len_mean', 0.0),
+                'timestamp': result.get('time_this_iter_s', 0.0),
+            }
+            
+            # Use iteration as "episode" number for consistency
+            success = self._session_manager.save_checkpoint(
+                worker_id=0,  # Driver/trainer
+                episode_num=iteration,
+                checkpoint_data=checkpoint_data,
+                model_state=model_bytes
+            )
+            
+            if success:
+                print(f"✅ Checkpoint {iteration} saved to S3! Size: {len(model_bytes):,} bytes")
+            else:
+                print(f"❌ Failed to save checkpoint {iteration}")
+                
+        except Exception as e:
+            print(f"❌ Error saving model checkpoint: {e}")
+            import traceback
+            traceback.print_exc()
 
