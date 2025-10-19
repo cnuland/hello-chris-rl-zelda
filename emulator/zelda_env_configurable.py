@@ -146,6 +146,10 @@ class ZeldaConfigurableEnvironment(gym.Env):
         self.last_dialogue_state = 0  # Track NPC dialogue interactions
         self.last_room_id = None  # Track room transitions
         
+        # Dialogue auto-progression (to prevent getting stuck in dialogue)
+        self.dialogue_frames_counter = 0  # Count consecutive frames in dialogue
+        self.dialogue_auto_advance_delay = 15  # Press A every 15 frames to advance dialogue
+        
         # Novelty-based exploration (time-decay system)
         self.room_last_visit = {}  # {room_id: step_count} - when room was last visited
         self.room_visit_count = {}  # {room_id: visit_count} - how many times visited
@@ -270,6 +274,27 @@ class ZeldaConfigurableEnvironment(gym.Env):
         
         # 🎯 Track action for strategic reward calculation
         self.last_action = action
+        
+        # 💬 DIALOGUE AUTO-PROGRESSION (prevent getting stuck in NPC dialogue)
+        dialogue_state = self.bridge.get_memory(0xC2EF)  # CUTSCENE_INDEX
+        
+        if dialogue_state > 0:
+            # In dialogue! Auto-advance by pressing A
+            self.dialogue_frames_counter += 1
+            
+            if self.dialogue_frames_counter >= self.dialogue_auto_advance_delay:
+                # Auto-press A to advance dialogue
+                self.bridge.step(ZeldaAction.A)
+                self.dialogue_frames_counter = 0
+                
+                # Log occasionally (not every frame)
+                if self.step_count % 50 == 0:
+                    print(f"💬 AUTO-ADVANCING DIALOGUE (state={dialogue_state}, step={self.step_count})")
+                
+                # Continue with rest of step to get observation and reward
+        else:
+            # Not in dialogue, reset counter
+            self.dialogue_frames_counter = 0
         
         # Convert action and execute with frame skip
         zelda_action = ZeldaAction(action)
