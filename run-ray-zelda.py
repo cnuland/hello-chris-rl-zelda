@@ -109,18 +109,26 @@ else:
     print(f"🆕 STARTING fresh training (no checkpoint)")
 
 # Configure checkpoint storage
-# NOTE: Checkpointing disabled for now - Ray workers don't have shared filesystem
-# Episode metadata is still being saved to S3 via session_manager
-# TODO: Enable once we have proper S3/MinIO storage configured for Ray checkpoints
+# Save to /tmp on head node - can download with oc rsync
+checkpoint_dir = "/tmp/ray_results/zelda_checkpoints"
+print(f"💾 Checkpoint config: ENABLED - Local directory on head node")
+print(f"   Storage path: {checkpoint_dir}")
+print(f"   Checkpoint frequency: Every 100 iterations")
+print(f"   Keep last: 3 checkpoints")
+print(f"   Download: oc rsync zelda-rl-head-s9rdj:{checkpoint_dir} ./checkpoints/ray/")
 
-print(f"💾 Checkpoint config: Disabled (no shared filesystem)")
-print(f"   Episode metadata still saving to S3: s3://sessions/")
+from ray.train import CheckpointConfig
 
 tune.run(
     "PPO",
     name="PPO_ZeldaOracleSeasons",
+    local_dir=checkpoint_dir,  # Save checkpoints here
     stop={"timesteps_total": ep_length * 10000},  # 300M timesteps total
-    checkpoint_freq=0,  # Disabled - no shared filesystem available
+    checkpoint_config=CheckpointConfig(
+        num_to_keep=3,  # Keep last 3 checkpoints (saves space)
+        checkpoint_frequency=100,  # Every 100 iterations (not too frequent)
+        checkpoint_at_end=True,  # Save final checkpoint
+    ),
     restore=restore_checkpoint if restore_checkpoint else None,  # Restore from checkpoint if provided
     config=config.to_dict()
 )
