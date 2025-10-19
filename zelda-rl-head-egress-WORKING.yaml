@@ -1,0 +1,19 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: zelda-rl-head-egress
+  namespace: zelda-hybrid-rl-llm
+spec:
+  podSelector:
+    matchLabels:
+      ray.io/cluster: zelda-rl
+      ray.io/node-type: head
+  policyTypes:
+  - Egress
+  egress:
+  # Allow ALL egress (most permissive - for training cluster)
+  # This ensures DNS, PyPI, and all services work
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+
