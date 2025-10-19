@@ -277,21 +277,30 @@ class ZeldaConfigurableEnvironment(gym.Env):
         
         # 💬 DIALOGUE AUTO-PROGRESSION (prevent getting stuck in NPC dialogue)
         dialogue_state = self.bridge.get_memory(0xC2EF)  # CUTSCENE_INDEX
+        menu_state = self.bridge.get_memory(0xD700)      # MENU_STATE
         
         if dialogue_state > 0:
-            # In dialogue! Auto-advance by pressing A
-            self.dialogue_frames_counter += 1
-            
-            if self.dialogue_frames_counter >= self.dialogue_auto_advance_delay:
-                # Auto-press A to advance dialogue
-                self.bridge.step(ZeldaAction.A)
+            # In dialogue! Check if it's a choice menu or regular text
+            if menu_state > 0:
+                # CHOICE MENU (Yes/No) - DON'T auto-advance!
+                # Let PPO or game handle the selection naturally
                 self.dialogue_frames_counter = 0
                 
-                # Log occasionally (not every frame)
+                # Log when we detect choice menu
                 if self.step_count % 50 == 0:
-                    print(f"💬 AUTO-ADVANCING DIALOGUE (state={dialogue_state}, step={self.step_count})")
+                    print(f"🎯 DIALOGUE CHOICE MENU (state={dialogue_state}, menu={menu_state}) - Letting PPO choose")
+            else:
+                # REGULAR DIALOGUE TEXT - Auto-advance by pressing A
+                self.dialogue_frames_counter += 1
                 
-                # Continue with rest of step to get observation and reward
+                if self.dialogue_frames_counter >= self.dialogue_auto_advance_delay:
+                    # Auto-press A to advance dialogue text
+                    self.bridge.step(ZeldaAction.A)
+                    self.dialogue_frames_counter = 0
+                    
+                    # Log occasionally (not every frame)
+                    if self.step_count % 50 == 0:
+                        print(f"💬 AUTO-ADVANCING DIALOGUE TEXT (state={dialogue_state}, step={self.step_count})")
         else:
             # Not in dialogue, reset counter
             self.dialogue_frames_counter = 0
