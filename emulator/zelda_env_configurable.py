@@ -150,6 +150,12 @@ class ZeldaConfigurableEnvironment(gym.Env):
         self.dialogue_frames_counter = 0  # Count consecutive frames in dialogue
         self.dialogue_auto_advance_delay = 15  # Press A every 15 frames to advance dialogue
         
+        # Video recording (for debugging and visualization)
+        self.save_video = self.config.get('emulator', {}).get('save_video', False)
+        self.video_writer = None
+        self.video_temp_file = None
+        self.video_session_id = None
+        
         # Novelty-based exploration (time-decay system)
         self.room_last_visit = {}  # {room_id: step_count} - when room was last visited
         self.room_visit_count = {}  # {room_id: visit_count} - how many times visited
@@ -244,6 +250,10 @@ class ZeldaConfigurableEnvironment(gym.Env):
         """Reset the environment to initial state."""
         super().reset(seed=seed)
         
+        # Close previous video writer if exists
+        if self.video_writer is not None:
+            self._finalize_video()
+        
         # Reset bridge
         self.bridge.reset()
         
@@ -252,6 +262,10 @@ class ZeldaConfigurableEnvironment(gym.Env):
         self.episode_count += 1
         self.current_structured_state = None
         self.previous_structured_state = None
+        
+        # Initialize video recording for this episode
+        if self.save_video:
+            self._init_video_recording()
         
         # Track initial death count to detect when Link dies
         # TOTAL_DEATHS is at 0xC61E (2 bytes)
@@ -338,6 +352,20 @@ class ZeldaConfigurableEnvironment(gym.Env):
         terminated = self._check_terminated()
         truncated = self._check_truncated()
         info = self._get_info()
+        
+        # Save video frame (if enabled)
+        if self.save_video and self.video_writer is not None:
+            try:
+                frame = self.bridge.get_screen_array()
+                self.video_writer.add_image(frame)
+            except Exception as e:
+                # Don't crash training if video fails
+                if self.step_count % 100 == 0:  # Log occasionally
+                    print(f"⚠️  Video frame capture failed: {e}")
+        
+        # Finalize and upload video on episode end
+        if (terminated or truncated) and self.save_video and self.video_writer is not None:
+            self._finalize_video()
         
         # Performance tracking
         self.total_step_time += time.time() - step_start_time
@@ -874,8 +902,95 @@ class ZeldaConfigurableEnvironment(gym.Env):
 
     def close(self):
         """Close the environment."""
+        # Finalize any open video recording
+        if hasattr(self, 'video_writer') and self.video_writer is not None:
+            self._finalize_video()
+        
         if hasattr(self, 'bridge'):
             self.bridge.close()
+    
+    def _init_video_recording(self):
+        """Initialize video recording for current episode."""
+        try:
+            import tempfile
+            import uuid
+            import random
+            import string
+            import mediapy as media
+            
+            # Generate unique session ID if not already set
+            if self.video_session_id is None:
+                self.video_session_id = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(6))
+            
+            # Create temp file for video
+            self.video_temp_file = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
+            temp_video_path = self.video_temp_file.name
+            
+            # Initialize mediapy VideoWriter
+            # Game Boy resolution: 160x144
+            self.video_writer = media.VideoWriter(
+                path=temp_video_path,
+                shape=(144, 160),  # (height, width) for Game Boy
+                fps=self.config.get('emulator', {}).get('video_fps', 60),
+                qp=self.config.get('emulator', {}).get('video_quality', 8)
+            )
+            self.video_writer.__enter__()
+            
+            print(f"🎥 Video recording started: episode_{self.episode_count}")
+            
+        except ImportError:
+            print(f"⚠️  mediapy not available, disabling video recording")
+            self.save_video = False
+        except Exception as e:
+            print(f"⚠️  Failed to start video recording: {e}")
+            self.save_video = False
+    
+    def _finalize_video(self):
+        """Close video writer and upload to S3 via SessionManager."""
+        if self.video_writer is None:
+            return
+        
+        try:
+            import uuid
+            
+            # Close video writer
+            self.video_writer.close()
+            temp_video_path = self.video_temp_file.name
+            
+            # Upload to S3 via SessionManager
+            if hasattr(self, 'session_manager') and self.session_manager and self.session_manager.enabled:
+                # Read video file
+                with open(temp_video_path, 'rb') as f:
+                    video_bytes = f.read()
+                
+                # Create S3 key
+                instance_id = getattr(self, 'instance_id', 0)
+                vid_id = str(uuid.uuid4())[:4]
+                s3_key = f"{self.session_manager.session_id}/videos/episode_{self.episode_count:06d}_instance_{instance_id}_vid_{vid_id}.mp4"
+                
+                # Upload via boto3
+                self.session_manager.s3_client.put_object(
+                    Bucket='sessions',
+                    Key=s3_key,
+                    Body=video_bytes,
+                    ContentType='video/mp4'
+                )
+                
+                video_size_mb = len(video_bytes) / 1024 / 1024
+                print(f"🎥 Video uploaded: s3://sessions/{s3_key} ({video_size_mb:.1f} MB)")
+            else:
+                print(f"⚠️  SessionManager not available, video not uploaded")
+            
+            # Clean up temp file
+            import os
+            if os.path.exists(temp_video_path):
+                os.remove(temp_video_path)
+            
+        except Exception as e:
+            print(f"❌ Failed to finalize video: {e}")
+        finally:
+            self.video_writer = None
+            self.video_temp_file = None
 
     def get_config_summary(self) -> Dict[str, Any]:
         """Get summary of current configuration."""
