@@ -200,7 +200,7 @@ class ZeldaHUDCallback(DefaultCallbacks):
         # Note: Workers will merge vision data + game state with these training metrics
     
     def _save_model_checkpoint(self, algorithm, iteration, result):
-        """Save model weights to S3/MinIO via SessionManager."""
+        """Save FULL Ray checkpoint to S3/MinIO (model + optimizer + algorithm state)."""
         try:
             # Initialize SessionManager if not already done
             if self._session_manager is None:
@@ -213,40 +213,70 @@ class ZeldaHUDCallback(DefaultCallbacks):
                     print(f"⚠️  SessionManager not enabled, skipping checkpoint save")
                     return
             
-            # Get model weights from algorithm
-            print(f"💾 Saving checkpoint at iteration {iteration}...")
+            print(f"💾 Saving FULL Ray checkpoint at iteration {iteration}...")
             
-            # Get model state dict
-            model_weights = algorithm.get_policy().get_weights()
+            # Save full checkpoint using Ray's built-in method
+            import tempfile
+            import shutil
+            from pathlib import Path
             
-            # Serialize to bytes
-            import pickle
-            model_bytes = pickle.dumps(model_weights)
-            
-            # Save checkpoint with model weights
-            checkpoint_data = {
-                'iteration': iteration,
-                'timesteps_total': result.get('timesteps_total', 0),
-                'episode_return_mean': result.get('episode_return_mean', 0.0),
-                'episode_len_mean': result.get('episode_len_mean', 0.0),
-                'timestamp': result.get('time_this_iter_s', 0.0),
-            }
-            
-            # Use iteration as "episode" number for consistency
-            success = self._session_manager.save_checkpoint(
-                worker_id=0,  # Driver/trainer
-                episode_num=iteration,
-                checkpoint_data=checkpoint_data,
-                model_state=model_bytes
-            )
-            
-            if success:
-                print(f"✅ Checkpoint {iteration} saved to S3! Size: {len(model_bytes):,} bytes")
-            else:
-                print(f"❌ Failed to save checkpoint {iteration}")
+            # Create temp directory for checkpoint
+            with tempfile.TemporaryDirectory() as temp_dir:
+                checkpoint_dir = Path(temp_dir) / f"checkpoint_{iteration:06d}"
+                
+                # Use algorithm's save method to create full checkpoint
+                checkpoint_result = algorithm.save(str(checkpoint_dir))
+                checkpoint_path = checkpoint_result.checkpoint.path
+                
+                print(f"   ✅ Ray checkpoint created: {checkpoint_path}")
+                
+                # Create tarball of checkpoint directory
+                import tarfile
+                tarball_path = Path(temp_dir) / f"checkpoint_{iteration:06d}.tar.gz"
+                
+                with tarfile.open(tarball_path, "w:gz") as tar:
+                    tar.add(checkpoint_path, arcname=f"checkpoint_{iteration:06d}")
+                
+                tarball_size = tarball_path.stat().st_size
+                print(f"   ✅ Checkpoint tarball created: {tarball_size:,} bytes")
+                
+                # Upload to S3
+                with open(tarball_path, 'rb') as f:
+                    checkpoint_bytes = f.read()
+                
+                s3_key = f"{self._session_manager.session_id}/ray_checkpoints/checkpoint_{iteration:06d}.tar.gz"
+                
+                self._session_manager.s3_client.put_object(
+                    Bucket='sessions',
+                    Key=s3_key,
+                    Body=checkpoint_bytes,
+                    ContentType='application/gzip'
+                )
+                
+                # Also save metadata
+                checkpoint_data = {
+                    'iteration': iteration,
+                    'timesteps_total': result.get('timesteps_total', 0),
+                    'episode_return_mean': result.get('episode_return_mean', 0.0),
+                    'episode_len_mean': result.get('episode_len_mean', 0.0),
+                    'checkpoint_path': s3_key,
+                }
+                
+                self._session_manager.save_checkpoint(
+                    worker_id=0,
+                    episode_num=iteration,
+                    checkpoint_data=checkpoint_data,
+                    model_state=None  # Don't duplicate - full checkpoint is in tarball
+                )
+                
+                size_mb = tarball_size / 1024 / 1024
+                print(f"✅ FULL Ray checkpoint saved to S3!")
+                print(f"   Location: s3://sessions/{s3_key}")
+                print(f"   Size: {size_mb:.1f} MB")
+                print(f"   Can resume training from this checkpoint!")
                 
         except Exception as e:
-            print(f"❌ Error saving model checkpoint: {e}")
+            print(f"❌ Error saving full checkpoint: {e}")
             import traceback
             traceback.print_exc()
 
