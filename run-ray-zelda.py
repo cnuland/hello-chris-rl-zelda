@@ -122,7 +122,7 @@ from ray.train import CheckpointConfig
 tune.run(
     "PPO",
     name="PPO_ZeldaOracleSeasons",
-    local_dir=checkpoint_dir,  # Save checkpoints here
+    storage_path=checkpoint_dir,  # Use storage_path instead of local_dir (new API)
     stop={"timesteps_total": ep_length * 10000},  # 300M timesteps total
     checkpoint_config=CheckpointConfig(
         num_to_keep=3,  # Keep last 3 checkpoints (saves space)
