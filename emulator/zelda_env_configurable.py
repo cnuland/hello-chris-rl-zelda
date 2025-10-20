@@ -290,32 +290,9 @@ class ZeldaConfigurableEnvironment(gym.Env):
         # 🎯 Track action for strategic reward calculation
         self.last_action = action
         
-        # 💬 DIALOGUE MODE (Vision-based): Let the LLM detect dialogue visually.
-        # Disable CUTSCENE memory gating; instead, periodically query the vision LLM.
-        self.dialogue_frames_since_last_llm += 1
-        if self.dialogue_frames_since_last_llm >= self.dialogue_llm_frequency:
-            self.dialogue_frames_since_last_llm = 0
-            try:
-                # Pass placeholders; the wrapper will decide via vision LLM (is_dialog flag)
-                dialogue_action = self._get_llm_dialogue_action(0, 0)
-            except AttributeError:
-                dialogue_action = None
-            
-            if dialogue_action is not None:
-                # Vision LLM indicated dialogue: take over and press the suggested button
-                self.bridge.step(dialogue_action)
-                if not self.in_dialogue_mode:
-                    print(f"💬 DIALOGUE MODE: LLM taking control (vision-detected)")
-                self.in_dialogue_mode = True
-                
-                obs = self._get_observation()
-                reward = 0.0  # No reward during dialogue control frames
-                return obs, reward, False, False, self._get_info()
-            else:
-                # No dialogue detected; ensure PPO has control
-                if self.in_dialogue_mode:
-                    print(f"🎮 DIALOGUE ENDED: Returning control to PPO")
-                self.in_dialogue_mode = False
+        # 💬 DIALOGUE MODE: Integrated into 3% vision LLM checks (in ray_zelda_env.py)
+        # PPO handles dialogue by default; vision LLM takes over when it detects dialogue
+        # No dedicated dialogue checking here - handled by regular vision calls
         
         # Convert action and execute with frame skip
         zelda_action = ZeldaAction(action)

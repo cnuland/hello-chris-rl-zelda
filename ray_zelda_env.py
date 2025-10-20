@@ -160,9 +160,6 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         # Initialize Vision LLM integration if enabled
         self._init_vision_llm()
         
-        # Initialize async dialogue LLM (non-blocking)
-        self._init_async_dialogue_llm()
-        
         # Initialize HUD client for vision updates
         self._init_hud_client()
         
@@ -183,18 +180,6 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
             print(f"   🖥️  HUD Client: ENABLED")
         if hasattr(self, 'session_manager') and self.session_manager and self.session_manager.enabled:
             print(f"   💾 Session Manager: ENABLED → s3://sessions/{self.session_manager.session_id}")
-    
-    def _init_async_dialogue_llm(self):
-        """Initialize async dialogue LLM (non-blocking checks)."""
-        from concurrent.futures import ThreadPoolExecutor
-        
-        # Thread pool for async dialogue checks (single worker to preserve order)
-        self.dialogue_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="DialogueLLM")
-        self.dialogue_future = None  # Current pending dialogue check
-        self.last_dialogue_result = None  # Cached result from last check
-        self.dialogue_check_step = 0  # Step count when last check was initiated
-        
-        print(f"   🔄 Async Dialogue LLM: ENABLED (non-blocking vision checks)")
     
     def _init_vision_llm(self):
         """Initialize vision LLM integration if enabled in config."""
@@ -678,18 +663,45 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
             
             # Format prompt with game state
             # NOTE: X,Y removed - Y position is broken (stuck at 0), misleading to send
-            user_prompt = self.user_prompt_template.format(
-                location=location_name,
-                cave_hint='',  # No cave_hint in current structure
-                health=health,
-                max_health=max_health,
-                npc_count=npc_count,
-                enemy_count=enemy_count,
-                item_count=item_count,
-                a_button_item=a_item_name,
-                b_button_item=b_item_name,
-                menu_status=menu_status
-            )
+            # DIALOGUE DETECTION: For vision calls, add dialogue detection to prompt
+            if screenshot_base64:
+                # Vision call: Include dialogue detection in prompt
+                user_prompt = self.user_prompt_template.format(
+                    location=location_name,
+                    cave_hint='',  # No cave_hint in current structure
+                    health=health,
+                    max_health=max_health,
+                    npc_count=npc_count,
+                    enemy_count=enemy_count,
+                    item_count=item_count,
+                    a_button_item=a_item_name,
+                    b_button_item=b_item_name,
+                    menu_status=menu_status
+                )
+                # Append dialogue detection instruction
+                user_prompt += (
+                    "\n\n🎯 DIALOGUE DETECTION:\n"
+                    "If you see an NPC dialogue box or text on screen, include in your response:\n"
+                    "DIALOGUE: YES\n"
+                    "Then suggest the button to advance dialogue (usually A, or LEFT/RIGHT for choices).\n\n"
+                    "If no dialogue is visible, include:\n"
+                    "DIALOGUE: NO\n"
+                    "Then suggest a strategic movement/action."
+                )
+            else:
+                # Text-only call: No dialogue detection (can't see screen)
+                user_prompt = self.user_prompt_template.format(
+                    location=location_name,
+                    cave_hint='',
+                    health=health,
+                    max_health=max_health,
+                    npc_count=npc_count,
+                    enemy_count=enemy_count,
+                    item_count=item_count,
+                    a_button_item=a_item_name,
+                    b_button_item=b_item_name,
+                    menu_status=menu_status
+                )
             
             # Prepare API request (different format for vision vs text-only)
             if screenshot_base64:
@@ -751,9 +763,10 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                 if not raw_response:
                     return None
                 
-                # Parse response (expecting two lines: SCENE: ... and ACTION: ...)
+                # Parse response (expecting SCENE:, ACTION:, and optionally DIALOGUE:)
                 scene_desc = ""
                 action = ""
+                is_dialogue = False
                 
                 lines = raw_response.split('\n')
                 for line in lines:
@@ -762,6 +775,9 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                         scene_desc = line.replace('SCENE:', '').strip()
                     elif line.startswith('ACTION:'):
                         action = line.replace('ACTION:', '').strip()
+                    elif line.startswith('DIALOGUE:'):
+                        dialogue_val = line.replace('DIALOGUE:', '').strip().upper()
+                        is_dialogue = ('YES' in dialogue_val or 'TRUE' in dialogue_val)
                 
                 # Fallback: if no structured format, try to extract action from anywhere
                 if not action:
@@ -773,10 +789,14 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                 
                 # If we have at least an action, return it
                 if action:
-                    return {
+                    result = {
                         'scene': scene_desc if scene_desc else raw_response[:100],  # Use full response as scene if not parsed
                         'action': action
                     }
+                    # Add dialogue flag if detected (for vision calls only)
+                    if screenshot_base64:
+                        result['is_dialog'] = is_dialogue
+                    return result
                 
                 return None
             else:
@@ -842,67 +862,13 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
     
     def _get_llm_dialogue_action(self, dialogue_state: int, menu_state: int):
         """
-        Get LLM action for dialogue navigation (ASYNC - non-blocking).
-        Called by base class when in dialogue mode.
-        Returns ZeldaAction or None.
+        DEPRECATED: Dialogue detection now integrated into regular vision LLM calls.
+        This method is called by base class but always returns None to let PPO handle dialogue.
+        Vision LLM (3% probability) will occasionally check and take over if needed.
         """
-        from emulator.input_map import ZeldaAction
-        from concurrent.futures import Future
-        
-        # Check if we have a pending async dialogue check
-        if self.dialogue_future is not None:
-            # Check if the async call completed
-            if self.dialogue_future.done():
-                try:
-                    llm_result = self.dialogue_future.result(timeout=0)
-                    self.last_dialogue_result = llm_result
-                    self.dialogue_future = None  # Clear completed future
-                except Exception as e:
-                    print(f"⚠️  Async dialogue LLM failed: {e}")
-                    self.dialogue_future = None
-        
-        # Start a new async check if we don't have one pending
-        if self.dialogue_future is None:
-            # Launch async dialogue check
-            self.dialogue_future = self.dialogue_executor.submit(
-                self._call_llm_for_dialogue, dialogue_state, menu_state
-            )
-            self.dialogue_check_step = getattr(self, '_step_count', 0)
-        
-        # Use cached result (or None if this is the first check)
-        llm_result = self.last_dialogue_result
-        
-        # If LLM indicates we're NOT actually in dialogue, don't take over
-        if llm_result and isinstance(llm_result, dict) and ('is_dialog' in llm_result):
-            try:
-                is_dialog = bool(llm_result.get('is_dialog'))
-            except Exception:
-                is_dialog = False
-            if not is_dialog:
-                print(f"💬 DIALOGUE LLM: Model says not in dialogue → returning control to PPO")
-                return None
-        
-        if llm_result and 'action' in llm_result:
-            llm_action = llm_result['action'].upper()
-            
-            # Map LLM action to ZeldaAction
-            action_map = {
-                'A': ZeldaAction.A,
-                'LEFT': ZeldaAction.LEFT,
-                'RIGHT': ZeldaAction.RIGHT,
-                'UP': ZeldaAction.UP,
-                'DOWN': ZeldaAction.DOWN,
-                'B': ZeldaAction.B,
-            }
-            
-            zelda_action = action_map.get(llm_action, ZeldaAction.A)  # Default to A
-            
-            print(f"💬 DIALOGUE LLM: {llm_result.get('scene', 'Navigating dialogue')} → {llm_action}")
-            
-            return zelda_action
-        else:
-            # No cached result yet, let PPO continue until LLM responds
-            return None
+        # Let PPO handle dialogue by default
+        # Vision LLM will take over when it detects dialogue during regular checks
+        return None
     
     def _call_llm_for_dialogue(self, dialogue_state: int, menu_state: int):
         """Call LLM specifically for dialogue navigation."""
@@ -1089,6 +1055,7 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                     # Extract scene description and action
                     scene_desc = llm_result.get('scene', '')
                     llm_action = llm_result.get('action', '')
+                    is_dialog = llm_result.get('is_dialog', False)  # Only present in vision calls
                     
                     self.last_llm_suggestion = llm_action  # Store action for HUD
                     
@@ -1096,9 +1063,24 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                     print(f"👁️  LLM SEES: {scene_desc}")
                     print(f"💡 LLM SUGGESTS: {llm_action}")
                     
+                    # DIALOGUE TAKEOVER: If vision LLM detects dialogue, execute action immediately
+                    if is_vision_step and is_dialog and llm_action:
+                        from emulator.input_map import ZeldaAction
+                        action_map = {
+                            'A': ZeldaAction.A,
+                            'LEFT': ZeldaAction.LEFT,
+                            'RIGHT': ZeldaAction.RIGHT,
+                            'UP': ZeldaAction.UP,
+                            'DOWN': ZeldaAction.DOWN,
+                            'B': ZeldaAction.B,
+                        }
+                        dialogue_action = action_map.get(llm_action.upper(), ZeldaAction.A)
+                        print(f"💬 DIALOGUE DETECTED: LLM executing {llm_action} (bypassing PPO)")
+                        self.bridge.step(dialogue_action)
+                        # No alignment bonus - this is a takeover, not a suggestion
+                        llm_bonus = 0.0
                     # LLM-EXCLUSIVE START BUTTON HANDLING
-                    # If LLM suggests START, execute it immediately (bypass PPO)
-                    if llm_action and llm_action.upper() == "START":
+                    elif llm_action and llm_action.upper() == "START":
                         from emulator.input_map import ZeldaAction
                         print(f"🎮 LLM MENU COMMAND: Executing START (open/close menu)")
                         # Execute START button press
