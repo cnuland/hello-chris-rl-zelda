@@ -663,22 +663,21 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
             
             # Format prompt with game state
             # NOTE: X,Y removed - Y position is broken (stuck at 0), misleading to send
+            user_prompt = self.user_prompt_template.format(
+                location=location_name,
+                cave_hint='',  # No cave_hint in current structure
+                health=health,
+                max_health=max_health,
+                npc_count=npc_count,
+                enemy_count=enemy_count,
+                item_count=item_count,
+                a_button_item=a_item_name,
+                b_button_item=b_item_name,
+                menu_status=menu_status
+            )
+            
             # DIALOGUE DETECTION: For vision calls, add dialogue detection to prompt
             if screenshot_base64:
-                # Vision call: Include dialogue detection in prompt
-                user_prompt = self.user_prompt_template.format(
-                    location=location_name,
-                    cave_hint='',  # No cave_hint in current structure
-                    health=health,
-                    max_health=max_health,
-                    npc_count=npc_count,
-                    enemy_count=enemy_count,
-                    item_count=item_count,
-                    a_button_item=a_item_name,
-                    b_button_item=b_item_name,
-                    menu_status=menu_status
-                )
-                # Append dialogue detection instruction
                 user_prompt += (
                     "\n\n🎯 DIALOGUE DETECTION:\n"
                     "If you see an NPC dialogue box or text on screen, include in your response:\n"
@@ -687,20 +686,6 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                     "If no dialogue is visible, include:\n"
                     "DIALOGUE: NO\n"
                     "Then suggest a strategic movement/action."
-                )
-            else:
-                # Text-only call: No dialogue detection (can't see screen)
-                user_prompt = self.user_prompt_template.format(
-                    location=location_name,
-                    cave_hint='',
-                    health=health,
-                    max_health=max_health,
-                    npc_count=npc_count,
-                    enemy_count=enemy_count,
-                    item_count=item_count,
-                    a_button_item=a_item_name,
-                    b_button_item=b_item_name,
-                    menu_status=menu_status
                 )
             
             # Prepare API request (different format for vision vs text-only)
@@ -793,7 +778,7 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                         'scene': scene_desc if scene_desc else raw_response[:100],  # Use full response as scene if not parsed
                         'action': action
                     }
-                    # Add dialogue flag if detected (for vision calls only)
+                    # Add dialogue flag for vision calls
                     if screenshot_base64:
                         result['is_dialog'] = is_dialogue
                     return result
@@ -860,130 +845,16 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         
         return 0.0
     
-    def _get_llm_dialogue_action(self, dialogue_state: int, menu_state: int):
+    def step(self, action: int) -> Tuple[np.ndarray, float, bool, bool, dict]:
         """
-        DEPRECATED: Dialogue detection now integrated into regular vision LLM calls.
-        This method is called by base class but always returns None to let PPO handle dialogue.
-        Vision LLM (3% probability) will occasionally check and take over if needed.
+        Execute one step in the environment.
+        Ray RLlib requires (obs, reward, terminated, truncated, info) return format.
         """
-        # Let PPO handle dialogue by default
-        # Vision LLM will take over when it detects dialogue during regular checks
-        return None
-    
-    def _call_llm_for_dialogue(self, dialogue_state: int, menu_state: int):
-        """Call LLM specifically for dialogue navigation."""
-        # Reuse existing LLM vision infrastructure
-        # Just need to add dialogue-specific context to prompt
+        import time
+        start_time = time.time()
         
-        # Get game state
-        if hasattr(self, 'state_encoder') and self.state_encoder:
-            _, game_state = self.state_encoder.encode_state(self.bridge)
-        else:
-            return None
-        
-        # Capture screenshot for vision LLM
-        screenshot_base64 = self.capture_screenshot_base64(for_hud=False)
-        
-        if not screenshot_base64:
-            return None
-        
-        # Create dialogue-specific prompt
-        player = game_state.get('player', {})
-        health = player.get('health', 0)
-        max_health = player.get('max_health', 3)
-        
-        dialogue_prompt = (
-            "You are looking at a live Game Boy screen from The Legend of Zelda: Oracle of Seasons.\n"
-            "Your task is to determine if an NPC dialogue/text box or a dialogue choice menu is currently visible.\n"
-            "If a dialogue box is on screen, propose the next single button to press to advance the dialogue.\n"
-            "If a choice menu (e.g., Yes/No) is visible, propose LEFT or RIGHT to move the selection, then A to confirm on the next step.\n\n"
-            f"Status: Health {health}/{max_health}.\n\n"
-            "Return ONLY compact JSON with keys is_dialog (boolean) and action (one of A, LEFT, RIGHT, UP, DOWN, B).\n"
-            "Examples: {\"is_dialog\": true, \"action\": \"A\"} or {\"is_dialog\": false, \"action\": \"A\"}.\n"
-            "Do not include any extra text."
-        )
-        
-        # Call LLM with dialogue context
-        return self._call_llm_vision_internal(screenshot_base64, game_state, custom_prompt=dialogue_prompt)
-    
-    def _call_llm_vision_internal(self, screenshot_base64, game_state, custom_prompt=None):
-        """Internal LLM vision call with optional custom prompt."""
-        try:
-            import json as _json
-            # Build user content with image and either custom dialogue prompt or default prompt
-            user_text = custom_prompt if custom_prompt else self.user_prompt_template
-            user_content = [
-                {
-                    "type": "image_url",
-                    "image_url": {"url": f"data:image/jpeg;base64,{screenshot_base64}"}
-                },
-                {
-                    "type": "text",
-                    "text": user_text
-                }
-            ]
-            payload = {
-                "messages": [
-                    {"role": "system", "content": self.system_prompt or "You are a helpful game assistant."},
-                    {"role": "user", "content": user_content}
-                ],
-                "max_tokens": 150,
-                "temperature": 0.2
-            }
-            if getattr(self, 'llm_model_name', None):
-                payload["model"] = self.llm_model_name
-            headers = {"Content-Type": "application/json"}
-            if getattr(self, 'llm_host_header', None):
-                headers["Host"] = self.llm_host_header
-            timeout_seconds = 60
-            resp = requests.post(self.llm_endpoint, json=payload, headers=headers, timeout=timeout_seconds)
-            if resp.status_code != 200:
-                # Log once
-                if not hasattr(self, '_llm_dialogue_error_logged'):
-                    print(f"⚠️  Dialogue LLM HTTP {resp.status_code}: {resp.text[:200]}")
-                    self._llm_dialogue_error_logged = True
-                return None
-            data = resp.json()
-            content = data.get('choices', [{}])[0].get('message', {}).get('content', '').strip()
-            if not content:
-                return None
-            # Try to extract JSON from the response
-            json_str = content
-            # Strip code fences if present
-            if json_str.startswith("```"):
-                # remove first line and last fence
-                parts = json_str.split("\n")
-                # drop first line if fence, and last line if fence
-                if parts and parts[0].startswith("```"):
-                    parts = parts[1:]
-                if parts and parts[-1].startswith("```"):
-                    parts = parts[:-1]
-                json_str = "\n".join(parts).strip()
-            # If extra prose, try to locate first and last braces
-            if '{' in json_str and '}' in json_str:
-                s = json_str.find('{')
-                e = json_str.rfind('}') + 1
-                json_str = json_str[s:e]
-            parsed = None
-            try:
-                parsed = _json.loads(json_str)
-            except Exception:
-                # Fallback to heuristic parse for lines like: is_dialog: true, action: A
-                is_dialog = 'true' in json_str.lower()
-                action = 'A'
-                for b in ['LEFT', 'RIGHT', 'UP', 'DOWN', 'B', 'A']:
-                    if b in json_str.upper():
-                        action = b
-                        break
-                parsed = {"is_dialog": is_dialog, "action": action}
-            # Normalize output
-            is_dialog = bool(parsed.get('is_dialog', False))
-            action = str(parsed.get('action', 'A')).upper()
-            scene_text = 'Dialogue detection'
-            return {"is_dialog": is_dialog, "action": action, "scene": scene_text}
-        except Exception as e:
-            print(f"⚠️  Dialogue LLM call failed: {type(e).__name__}: {e}")
-            return None
+        # Call parent step
+        obs, reward, terminated, truncated, info = super().step(action)
         
         # Track episode data for session saving
         if hasattr(self, 'session_manager') and self.session_manager and self.session_manager.enabled:
@@ -1052,18 +923,20 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                     self.llm_call_count += 1
                     self.llm_success_count += 1
                     
-                    # Extract scene description and action
+                    # Extract scene description, action, and dialogue flag
                     scene_desc = llm_result.get('scene', '')
                     llm_action = llm_result.get('action', '')
-                    is_dialog = llm_result.get('is_dialog', False)  # Only present in vision calls
+                    is_dialog = llm_result.get('is_dialog', False)  # Vision calls include dialogue detection
                     
                     self.last_llm_suggestion = llm_action  # Store action for HUD
                     
                     # Log what the LLM sees and suggests
                     print(f"👁️  LLM SEES: {scene_desc}")
                     print(f"💡 LLM SUGGESTS: {llm_action}")
+                    if is_vision_step and is_dialog:
+                        print(f"💬 DIALOGUE FLAG: LLM detected dialogue on screen")
                     
-                    # DIALOGUE TAKEOVER: If vision LLM detects dialogue, execute action immediately
+                    # DIALOGUE TAKEOVER: If vision LLM detects dialogue, execute immediately (bypass PPO)
                     if is_vision_step and is_dialog and llm_action:
                         from emulator.input_map import ZeldaAction
                         action_map = {
