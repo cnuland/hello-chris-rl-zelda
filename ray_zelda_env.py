@@ -160,6 +160,9 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         # Initialize Vision LLM integration if enabled
         self._init_vision_llm()
         
+        # Initialize async dialogue LLM (non-blocking)
+        self._init_async_dialogue_llm()
+        
         # Initialize HUD client for vision updates
         self._init_hud_client()
         
@@ -180,6 +183,18 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
             print(f"   🖥️  HUD Client: ENABLED")
         if hasattr(self, 'session_manager') and self.session_manager and self.session_manager.enabled:
             print(f"   💾 Session Manager: ENABLED → s3://sessions/{self.session_manager.session_id}")
+    
+    def _init_async_dialogue_llm(self):
+        """Initialize async dialogue LLM (non-blocking checks)."""
+        from concurrent.futures import ThreadPoolExecutor
+        
+        # Thread pool for async dialogue checks (single worker to preserve order)
+        self.dialogue_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="DialogueLLM")
+        self.dialogue_future = None  # Current pending dialogue check
+        self.last_dialogue_result = None  # Cached result from last check
+        self.dialogue_check_step = 0  # Step count when last check was initiated
+        
+        print(f"   🔄 Async Dialogue LLM: ENABLED (non-blocking vision checks)")
     
     def _init_vision_llm(self):
         """Initialize vision LLM integration if enabled in config."""
@@ -827,15 +842,35 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
     
     def _get_llm_dialogue_action(self, dialogue_state: int, menu_state: int):
         """
-        Get LLM action for dialogue navigation.
+        Get LLM action for dialogue navigation (ASYNC - non-blocking).
         Called by base class when in dialogue mode.
         Returns ZeldaAction or None.
         """
         from emulator.input_map import ZeldaAction
+        from concurrent.futures import Future
         
-        # Call LLM vision to get dialogue action
-        # Force vision call for dialogue (need to see screen)
-        llm_result = self._call_llm_for_dialogue(dialogue_state, menu_state)
+        # Check if we have a pending async dialogue check
+        if self.dialogue_future is not None:
+            # Check if the async call completed
+            if self.dialogue_future.done():
+                try:
+                    llm_result = self.dialogue_future.result(timeout=0)
+                    self.last_dialogue_result = llm_result
+                    self.dialogue_future = None  # Clear completed future
+                except Exception as e:
+                    print(f"⚠️  Async dialogue LLM failed: {e}")
+                    self.dialogue_future = None
+        
+        # Start a new async check if we don't have one pending
+        if self.dialogue_future is None:
+            # Launch async dialogue check
+            self.dialogue_future = self.dialogue_executor.submit(
+                self._call_llm_for_dialogue, dialogue_state, menu_state
+            )
+            self.dialogue_check_step = getattr(self, '_step_count', 0)
+        
+        # Use cached result (or None if this is the first check)
+        llm_result = self.last_dialogue_result
         
         # If LLM indicates we're NOT actually in dialogue, don't take over
         if llm_result and isinstance(llm_result, dict) and ('is_dialog' in llm_result):
@@ -866,9 +901,8 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
             
             return zelda_action
         else:
-            # LLM failed, default to A (advance dialogue)
-            print(f"💬 DIALOGUE: LLM unavailable, auto-pressing A")
-            return ZeldaAction.A
+            # No cached result yet, let PPO continue until LLM responds
+            return None
     
     def _call_llm_for_dialogue(self, dialogue_state: int, menu_state: int):
         """Call LLM specifically for dialogue navigation."""
