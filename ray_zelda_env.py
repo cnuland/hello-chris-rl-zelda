@@ -825,16 +825,17 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         
         return 0.0
     
-    def _handle_dialogue_with_llm(self, dialogue_state: int):
+    def _get_llm_dialogue_action(self, dialogue_state: int, menu_state: int):
         """
-        Handle dialogue mode - LLM takes full control.
-        Returns (obs, reward, terminated, truncated, info)
+        Get LLM action for dialogue navigation.
+        Called by base class when in dialogue mode.
+        Returns ZeldaAction or None.
         """
         from emulator.input_map import ZeldaAction
         
         # Call LLM vision to get dialogue action
         # Force vision call for dialogue (need to see screen)
-        llm_result = self._call_llm_for_dialogue(dialogue_state)
+        llm_result = self._call_llm_for_dialogue(dialogue_state, menu_state)
         
         if llm_result and 'action' in llm_result:
             llm_action = llm_result['action'].upper()
@@ -853,23 +854,13 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
             
             print(f"💬 DIALOGUE LLM: {llm_result.get('scene', 'Navigating dialogue')} → {llm_action}")
             
-            # Execute LLM's action
-            self.bridge.step(zelda_action)
+            return zelda_action
         else:
             # LLM failed, default to A (advance dialogue)
-            self.bridge.step(ZeldaAction.A)
             print(f"💬 DIALOGUE: LLM unavailable, auto-pressing A")
-        
-        # Get observation after dialogue action
-        obs = self._get_observation()
-        reward = 0.0  # No reward during dialogue navigation
-        terminated = self._check_terminated()
-        truncated = self._check_truncated()
-        info = self._get_info()
-        
-        return obs, reward, terminated, truncated, info
+            return ZeldaAction.A
     
-    def _call_llm_for_dialogue(self, dialogue_state: int):
+    def _call_llm_for_dialogue(self, dialogue_state: int, menu_state: int):
         """Call LLM specifically for dialogue navigation."""
         # Reuse existing LLM vision infrastructure
         # Just need to add dialogue-specific context to prompt
