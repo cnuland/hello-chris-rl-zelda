@@ -109,26 +109,19 @@ else:
     print(f"🆕 STARTING fresh training (no checkpoint)")
 
 # Configure checkpoint storage
-# Save to /tmp on head node - can download with oc rsync
-checkpoint_dir = "/tmp/ray_results/zelda_checkpoints"
-print(f"💾 Checkpoint config: ENABLED - Local directory on head node")
-print(f"   Storage path: {checkpoint_dir}")
-print(f"   Checkpoint frequency: Every 100 iterations")
-print(f"   Keep last: 3 checkpoints")
-print(f"   Download: oc rsync zelda-rl-head-s9rdj:{checkpoint_dir} ./checkpoints/ray/")
-
-from ray.train import CheckpointConfig
+# DISABLE Ray native checkpoints - workers can't access head node storage
+# Use callback-based checkpoints to MinIO instead (working perfectly)
+print(f"💾 Ray Checkpoint config: DISABLED (no shared filesystem)")
+print(f"   Using callback checkpoints instead:")
+print(f"   • Model weights: Every 50 iterations → s3://sessions/.../worker_0/episode_NNNNNN_model.pth")
+print(f"   • Full tarball: Every 50 iterations → s3://sessions/.../ray_checkpoints/checkpoint_NNNNNN.tar.gz")
+print(f"   • Episode videos: On episode end → s3://sessions/.../videos/")
 
 tune.run(
     "PPO",
     name="PPO_ZeldaOracleSeasons",
-    storage_path=checkpoint_dir,  # Use storage_path instead of local_dir (new API)
     stop={"timesteps_total": ep_length * 10000},  # 300M timesteps total
-    checkpoint_config=CheckpointConfig(
-        num_to_keep=3,  # Keep last 3 checkpoints (saves space)
-        checkpoint_frequency=100,  # Every 100 iterations (not too frequent)
-        checkpoint_at_end=True,  # Save final checkpoint
-    ),
+    checkpoint_freq=0,  # Disabled - use callback checkpoints to MinIO instead
     restore=restore_checkpoint if restore_checkpoint else None,  # Restore from checkpoint if provided
     config=config.to_dict()
 )
