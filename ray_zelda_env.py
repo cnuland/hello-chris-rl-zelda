@@ -872,11 +872,7 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
             return None
         
         # Capture screenshot for vision LLM
-        screenshot_base64 = self._capture_screenshot_base64(
-            scale=self.image_scale,
-            quality=self.image_quality,
-            format=self.image_format
-        )
+        screenshot_base64 = self.capture_screenshot_base64(for_hud=False)
         
         if not screenshot_base64:
             return None
