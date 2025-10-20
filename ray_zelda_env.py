@@ -837,6 +837,16 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         # Force vision call for dialogue (need to see screen)
         llm_result = self._call_llm_for_dialogue(dialogue_state, menu_state)
         
+        # If LLM indicates we're NOT actually in dialogue, don't take over
+        if llm_result and isinstance(llm_result, dict) and ('is_dialog' in llm_result):
+            try:
+                is_dialog = bool(llm_result.get('is_dialog'))
+            except Exception:
+                is_dialog = False
+            if not is_dialog:
+                print(f"💬 DIALOGUE LLM: Model says not in dialogue → returning control to PPO")
+                return None
+        
         if llm_result and 'action' in llm_result:
             llm_action = llm_result['action'].upper()
             
@@ -882,38 +892,98 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         health = player.get('health', 0)
         max_health = player.get('max_health', 3)
         
-        dialogue_prompt = f"""
-🗨️  DIALOGUE MODE - You are navigating an NPC conversation
-
-Current status:
-- Health: {health}/{max_health} hearts
-- Dialogue State: Active
-
-DIALOGUE NAVIGATION:
-1. If you see dialogue TEXT on screen:
-   → Suggest "A" to advance to next text box
-
-2. If you see a CHOICE MENU (Yes/No):
-   → Suggest "LEFT" or "RIGHT" to highlight your choice
-   → Then suggest "A" to select
-
-3. Common dialogue patterns:
-   - Maku Tree asks "Will you help?" → Suggest "A" (Yes is default)
-   - "Do you want me to repeat?" → Suggest "RIGHT" then "A" (select No)
-   - Simple text → Suggest "A" to continue
-
-Your ONLY job right now is to navigate this dialogue to completion.
-Suggest ONE button: A, LEFT, RIGHT, UP, or DOWN
-"""
+        dialogue_prompt = (
+            "You are looking at a live Game Boy screen from The Legend of Zelda: Oracle of Seasons.\n"
+            "Your task is to determine if an NPC dialogue/text box or a dialogue choice menu is currently visible.\n"
+            "If a dialogue box is on screen, propose the next single button to press to advance the dialogue.\n"
+            "If a choice menu (e.g., Yes/No) is visible, propose LEFT or RIGHT to move the selection, then A to confirm on the next step.\n\n"
+            f"Status: Health {health}/{max_health}.\n\n"
+            "Return ONLY compact JSON with keys is_dialog (boolean) and action (one of A, LEFT, RIGHT, UP, DOWN, B).\n"
+            "Examples: {\"is_dialog\": true, \"action\": \"A\"} or {\"is_dialog\": false, \"action\": \"A\"}.\n"
+            "Do not include any extra text."
+        )
         
         # Call LLM with dialogue context
         return self._call_llm_vision_internal(screenshot_base64, game_state, custom_prompt=dialogue_prompt)
     
     def _call_llm_vision_internal(self, screenshot_base64, game_state, custom_prompt=None):
         """Internal LLM vision call with optional custom prompt."""
-        # For now, use simple A-button default for dialogue
-        # TODO: Full LLM integration with custom prompt
-        return {'action': 'A', 'scene': 'Advancing dialogue'}
+        try:
+            import json as _json
+            # Build user content with image and either custom dialogue prompt or default prompt
+            user_text = custom_prompt if custom_prompt else self.user_prompt_template
+            user_content = [
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/jpeg;base64,{screenshot_base64}"}
+                },
+                {
+                    "type": "text",
+                    "text": user_text
+                }
+            ]
+            payload = {
+                "messages": [
+                    {"role": "system", "content": self.system_prompt or "You are a helpful game assistant."},
+                    {"role": "user", "content": user_content}
+                ],
+                "max_tokens": 150,
+                "temperature": 0.2
+            }
+            if getattr(self, 'llm_model_name', None):
+                payload["model"] = self.llm_model_name
+            headers = {"Content-Type": "application/json"}
+            if getattr(self, 'llm_host_header', None):
+                headers["Host"] = self.llm_host_header
+            timeout_seconds = 60
+            resp = requests.post(self.llm_endpoint, json=payload, headers=headers, timeout=timeout_seconds)
+            if resp.status_code != 200:
+                # Log once
+                if not hasattr(self, '_llm_dialogue_error_logged'):
+                    print(f"⚠️  Dialogue LLM HTTP {resp.status_code}: {resp.text[:200]}")
+                    self._llm_dialogue_error_logged = True
+                return None
+            data = resp.json()
+            content = data.get('choices', [{}])[0].get('message', {}).get('content', '').strip()
+            if not content:
+                return None
+            # Try to extract JSON from the response
+            json_str = content
+            # Strip code fences if present
+            if json_str.startswith("```"):
+                # remove first line and last fence
+                parts = json_str.split("\n")
+                # drop first line if fence, and last line if fence
+                if parts and parts[0].startswith("```"):
+                    parts = parts[1:]
+                if parts and parts[-1].startswith("```"):
+                    parts = parts[:-1]
+                json_str = "\n".join(parts).strip()
+            # If extra prose, try to locate first and last braces
+            if '{' in json_str and '}' in json_str:
+                s = json_str.find('{')
+                e = json_str.rfind('}') + 1
+                json_str = json_str[s:e]
+            parsed = None
+            try:
+                parsed = _json.loads(json_str)
+            except Exception:
+                # Fallback to heuristic parse for lines like: is_dialog: true, action: A
+                is_dialog = 'true' in json_str.lower()
+                action = 'A'
+                for b in ['LEFT', 'RIGHT', 'UP', 'DOWN', 'B', 'A']:
+                    if b in json_str.upper():
+                        action = b
+                        break
+                parsed = {"is_dialog": is_dialog, "action": action}
+            # Normalize output
+            is_dialog = bool(parsed.get('is_dialog', False))
+            action = str(parsed.get('action', 'A')).upper()
+            scene_text = 'Dialogue detection'
+            return {"is_dialog": is_dialog, "action": action, "scene": scene_text}
+        except Exception as e:
+            print(f"⚠️  Dialogue LLM call failed: {type(e).__name__}: {e}")
+            return None
         
         # Track episode data for session saving
         if hasattr(self, 'session_manager') and self.session_manager and self.session_manager.enabled:

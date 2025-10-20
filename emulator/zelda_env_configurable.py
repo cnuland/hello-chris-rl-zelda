@@ -290,43 +290,32 @@ class ZeldaConfigurableEnvironment(gym.Env):
         # 🎯 Track action for strategic reward calculation
         self.last_action = action
         
-        # 💬 DIALOGUE MODE: LLM takes full control during conversations
-        dialogue_state = self.bridge.get_memory(0xC2EF)  # CUTSCENE_INDEX
-        menu_state = self.bridge.get_memory(0xD700)      # MENU_STATE
-        
-        # Check if entering or exiting dialogue
-        was_in_dialogue = self.in_dialogue_mode
-        self.in_dialogue_mode = (dialogue_state > 0)
-        
-        if self.in_dialogue_mode:
-            # IN DIALOGUE - LLM CONTROLS EVERYTHING!
-            self.dialogue_frames_since_last_llm += 1
-            
-            # Call LLM every N frames during dialogue (or every frame if needed)
-            if self.dialogue_frames_since_last_llm >= self.dialogue_llm_frequency:
-                self.dialogue_frames_since_last_llm = 0
-                
-                # Get LLM action for dialogue navigation
-                dialogue_action = self._get_llm_dialogue_action(dialogue_state, menu_state)
-                
-                if dialogue_action is not None:
-                    # Execute LLM's dialogue action (bypass PPO)
-                    self.bridge.step(dialogue_action)
-                    
-                    # Log dialogue control
-                    if not was_in_dialogue:
-                        print(f"💬 DIALOGUE MODE: LLM taking control (state={dialogue_state})")
-                    
-                    # Skip PPO action - LLM is handling dialogue
-                    obs = self._get_observation()
-                    reward = 0.0  # No reward during dialogue frames
-                    return obs, reward, False, False, self._get_info()
-        else:
-            # NOT in dialogue - PPO has full control
+        # 💬 DIALOGUE MODE (Vision-based): Let the LLM detect dialogue visually.
+        # Disable CUTSCENE memory gating; instead, periodically query the vision LLM.
+        self.dialogue_frames_since_last_llm += 1
+        if self.dialogue_frames_since_last_llm >= self.dialogue_llm_frequency:
             self.dialogue_frames_since_last_llm = 0
+            try:
+                # Pass placeholders; the wrapper will decide via vision LLM (is_dialog flag)
+                dialogue_action = self._get_llm_dialogue_action(0, 0)
+            except AttributeError:
+                dialogue_action = None
             
-            if was_in_dialogue:
-                print(f"🎮 DIALOGUE ENDED: Returning control to PPO")
+            if dialogue_action is not None:
+                # Vision LLM indicated dialogue: take over and press the suggested button
+                self.bridge.step(dialogue_action)
+                if not self.in_dialogue_mode:
+                    print(f"💬 DIALOGUE MODE: LLM taking control (vision-detected)")
+                self.in_dialogue_mode = True
+                
+                obs = self._get_observation()
+                reward = 0.0  # No reward during dialogue control frames
+                return obs, reward, False, False, self._get_info()
+            else:
+                # No dialogue detected; ensure PPO has control
+                if self.in_dialogue_mode:
+                    print(f"🎮 DIALOGUE ENDED: Returning control to PPO")
+                self.in_dialogue_mode = False
         
         # Convert action and execute with frame skip
         zelda_action = ZeldaAction(action)
@@ -623,19 +612,15 @@ class ZeldaConfigurableEnvironment(gym.Env):
                         total_reward += dungeon_discovery_bonus
                         print(f"🏰 DUNGEON DISCOVERED! Floor {dungeon_floor} (+{dungeon_discovery_bonus:.1f} bonus)")
                 
-                # C) NPC INTERACTION REWARDS - DIALOGUE DETECTION
-                if dialogue_state > 0 and dialogue_state != self.last_dialogue_state:
-                    npc_bonus = reward_config.get('npc_interaction_reward', 15.0)
-                    total_reward += npc_bonus
-                    if self.episode_count % 5 == 0:  # Log occasionally
-                        print(f"💬 NPC INTERACTION! Dialogue state: {dialogue_state} (+{npc_bonus:.1f} reward)")
-                
+                # C) NPC INTERACTION REWARDS - DISABLED (CUTSCENE memory unreliable)
+                # Do not award rewards based on 0xC2EF as it false-triggers.
                 self.last_dialogue_state = dialogue_state
                 self.last_room_id = current_room
                 
                 # D) LLM GUIDANCE REWARDS - MASSIVE EMPHASIS!
                 if hasattr(self, 'last_llm_suggestion') and self.last_llm_suggestion:
-                    llm_bonus = self._calculate_llm_guidance_reward(current_room, dialogue_state, dungeon_floor)
+                    # Pass 0 for dialogue_state to avoid any memory-based rewards
+                    llm_bonus = self._calculate_llm_guidance_reward(current_room, 0, dungeon_floor)
                     total_reward += llm_bonus
                     
                 # E) 🎯 STRATEGIC ACTION REWARDS - Teach RL proper Zelda gameplay
@@ -676,11 +661,7 @@ class ZeldaConfigurableEnvironment(gym.Env):
             llm_bonus += dungeon_bonus
             print(f"🧠 LLM DUNGEON SUCCESS! Entered dungeon as suggested (+{dungeon_bonus:.1f})")
             
-        # 3) SOCIAL ALIGNMENT - If LLM suggested talking and dialogue activated
-        if any(word in llm_action for word in ['TALK', 'NPC']) and dialogue_state > self.last_dialogue_state:
-            social_bonus = reward_config.get('npc_interaction_reward', 15.0) * base_llm_multiplier  
-            llm_bonus += social_bonus
-            print(f"🧠 LLM SOCIAL SUCCESS! Talked to NPC as suggested (+{social_bonus:.1f})")
+        # 3) SOCIAL ALIGNMENT - DISABLED (dialogue_state unreliable)
             
         # 4) STRATEGIC ALIGNMENT - Continuous bonus for following LLM direction
         if self.steps_since_llm_call < 100:  # Within 100 steps of LLM call
@@ -710,7 +691,8 @@ class ZeldaConfigurableEnvironment(gym.Env):
         elif any(word in llm_action for word in ['DUNGEON', 'ENTER']):
             return dungeon_floor > 0  # Successfully entered dungeon
         elif any(word in llm_action for word in ['TALK', 'NPC']):
-            return dialogue_state > 0  # Successfully initiated dialogue
+            # Dialogue detection via memory is unreliable; disable completion check
+            return False
         elif 'ATTACK' in llm_action or 'COMBAT' in llm_action:
             # Could check for enemy defeat here
             return False
