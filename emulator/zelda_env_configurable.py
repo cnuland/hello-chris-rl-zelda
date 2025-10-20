@@ -290,34 +290,35 @@ class ZeldaConfigurableEnvironment(gym.Env):
         self.last_action = action
         
         # 💬 DIALOGUE AUTO-PROGRESSION (prevent getting stuck in NPC dialogue)
-        dialogue_state = self.bridge.get_memory(0xC2EF)  # CUTSCENE_INDEX
-        menu_state = self.bridge.get_memory(0xD700)      # MENU_STATE
-        
-        if dialogue_state > 0:
-            # In dialogue! Check if it's a choice menu or regular text
-            if menu_state > 0:
-                # CHOICE MENU (Yes/No) - DON'T auto-advance!
-                # Let PPO or game handle the selection naturally
-                self.dialogue_frames_counter = 0
-                
-                # Log when we detect choice menu
-                if self.step_count % 50 == 0:
-                    print(f"🎯 DIALOGUE CHOICE MENU (state={dialogue_state}, menu={menu_state}) - Letting PPO choose")
-            else:
-                # REGULAR DIALOGUE TEXT - Auto-advance by pressing A
-                self.dialogue_frames_counter += 1
-                
-                if self.dialogue_frames_counter >= self.dialogue_auto_advance_delay:
-                    # Auto-press A to advance dialogue text
-                    self.bridge.step(ZeldaAction.A)
-                    self.dialogue_frames_counter = 0
-                    
-                    # Log occasionally (not every frame)
-                    if self.step_count % 50 == 0:
-                        print(f"💬 AUTO-ADVANCING DIALOGUE TEXT (state={dialogue_state}, step={self.step_count})")
-        else:
-            # Not in dialogue, reset counter
-            self.dialogue_frames_counter = 0
+        # DISABLED FOR NOW - May be interfering with normal gameplay
+        # dialogue_state = self.bridge.get_memory(0xC2EF)  # CUTSCENE_INDEX
+        # menu_state = self.bridge.get_memory(0xD700)      # MENU_STATE
+        # 
+        # if dialogue_state > 0:
+        #     # In dialogue! Check if it's a choice menu or regular text
+        #     if menu_state > 0:
+        #         # CHOICE MENU (Yes/No) - DON'T auto-advance!
+        #         # Let PPO or game handle the selection naturally
+        #         self.dialogue_frames_counter = 0
+        #         
+        #         # Log when we detect choice menu
+        #         if self.step_count % 50 == 0:
+        #             print(f"🎯 DIALOGUE CHOICE MENU (state={dialogue_state}, menu={menu_state}) - Letting PPO choose")
+        #     else:
+        #         # REGULAR DIALOGUE TEXT - Auto-advance by pressing A
+        #         self.dialogue_frames_counter += 1
+        #         
+        #         if self.dialogue_frames_counter >= self.dialogue_auto_advance_delay:
+        #             # Auto-press A to advance dialogue text
+        #             self.bridge.step(ZeldaAction.A)
+        #             self.dialogue_frames_counter = 0
+        #             
+        #             # Log occasionally (not every frame)
+        #             if self.step_count % 50 == 0:
+        #                 print(f"💬 AUTO-ADVANCING DIALOGUE TEXT (state={dialogue_state}, step={self.step_count})")
+        # else:
+        #     # Not in dialogue, reset counter
+        #     self.dialogue_frames_counter = 0
         
         # Convert action and execute with frame skip
         zelda_action = ZeldaAction(action)
@@ -450,10 +451,13 @@ class ZeldaConfigurableEnvironment(gym.Env):
             except:
                 movement_reward = reward_config.get('movement', 0.1)
             
-            total_reward += movement_reward
-            # Occasional logging to verify
-            if hasattr(self, 'step_count') and self.step_count % 1000 == 0:
-                print(f"🚶 Movement reward: Position changed (+{movement_reward:.1f})")
+            # ONLY award movement if position actually changed!
+            if self.stuck_counter == 0:
+                total_reward += movement_reward
+                # Occasional logging to verify
+                if hasattr(self, 'step_count') and self.step_count % 1000 == 0:
+                    print(f"🚶 Movement reward: Position changed (+{movement_reward:.1f})")
+            # else: Link is stuck, no movement reward
         # else: No movement reward if stuck (position unchanged)
         
         # Position stuck penalty (staying in same X,Y)
