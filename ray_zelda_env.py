@@ -825,16 +825,108 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         
         return 0.0
     
-    def step(self, action: int) -> Tuple[np.ndarray, float, bool, bool, dict]:
+    def _handle_dialogue_with_llm(self, dialogue_state: int):
         """
-        Execute one step in the environment.
-        Ray RLlib requires (obs, reward, terminated, truncated, info) return format.
+        Handle dialogue mode - LLM takes full control.
+        Returns (obs, reward, terminated, truncated, info)
         """
-        import time
-        start_time = time.time()
+        from emulator.input_map import ZeldaAction
         
-        # Call parent step
-        obs, reward, terminated, truncated, info = super().step(action)
+        # Call LLM vision to get dialogue action
+        # Force vision call for dialogue (need to see screen)
+        llm_result = self._call_llm_for_dialogue(dialogue_state)
+        
+        if llm_result and 'action' in llm_result:
+            llm_action = llm_result['action'].upper()
+            
+            # Map LLM action to ZeldaAction
+            action_map = {
+                'A': ZeldaAction.A,
+                'LEFT': ZeldaAction.LEFT,
+                'RIGHT': ZeldaAction.RIGHT,
+                'UP': ZeldaAction.UP,
+                'DOWN': ZeldaAction.DOWN,
+                'B': ZeldaAction.B,
+            }
+            
+            zelda_action = action_map.get(llm_action, ZeldaAction.A)  # Default to A
+            
+            print(f"💬 DIALOGUE LLM: {llm_result.get('scene', 'Navigating dialogue')} → {llm_action}")
+            
+            # Execute LLM's action
+            self.bridge.step(zelda_action)
+        else:
+            # LLM failed, default to A (advance dialogue)
+            self.bridge.step(ZeldaAction.A)
+            print(f"💬 DIALOGUE: LLM unavailable, auto-pressing A")
+        
+        # Get observation after dialogue action
+        obs = self._get_observation()
+        reward = 0.0  # No reward during dialogue navigation
+        terminated = self._check_terminated()
+        truncated = self._check_truncated()
+        info = self._get_info()
+        
+        return obs, reward, terminated, truncated, info
+    
+    def _call_llm_for_dialogue(self, dialogue_state: int):
+        """Call LLM specifically for dialogue navigation."""
+        # Reuse existing LLM vision infrastructure
+        # Just need to add dialogue-specific context to prompt
+        
+        # Get game state
+        if hasattr(self, 'state_encoder') and self.state_encoder:
+            _, game_state = self.state_encoder.encode_state(self.bridge)
+        else:
+            return None
+        
+        # Capture screenshot for vision LLM
+        screenshot_base64 = self._capture_screenshot_base64(
+            scale=self.image_scale,
+            quality=self.image_quality,
+            format=self.image_format
+        )
+        
+        if not screenshot_base64:
+            return None
+        
+        # Create dialogue-specific prompt
+        player = game_state.get('player', {})
+        health = player.get('health', 0)
+        max_health = player.get('max_health', 3)
+        
+        dialogue_prompt = f"""
+🗨️  DIALOGUE MODE - You are navigating an NPC conversation
+
+Current status:
+- Health: {health}/{max_health} hearts
+- Dialogue State: Active
+
+DIALOGUE NAVIGATION:
+1. If you see dialogue TEXT on screen:
+   → Suggest "A" to advance to next text box
+
+2. If you see a CHOICE MENU (Yes/No):
+   → Suggest "LEFT" or "RIGHT" to highlight your choice
+   → Then suggest "A" to select
+
+3. Common dialogue patterns:
+   - Maku Tree asks "Will you help?" → Suggest "A" (Yes is default)
+   - "Do you want me to repeat?" → Suggest "RIGHT" then "A" (select No)
+   - Simple text → Suggest "A" to continue
+
+Your ONLY job right now is to navigate this dialogue to completion.
+Suggest ONE button: A, LEFT, RIGHT, UP, or DOWN
+"""
+        
+        # Call LLM with dialogue context
+        return self._call_llm_vision_internal(screenshot_base64, game_state, custom_prompt=dialogue_prompt)
+    
+    def _call_llm_vision_internal(self, screenshot_base64, game_state, custom_prompt=None):
+        """Internal LLM vision call with optional custom prompt."""
+        # For now, use simple A-button default for dialogue
+        # TODO: Full LLM integration with custom prompt
+        return {'action': 'A', 'scene': 'Advancing dialogue'}
         
         # Track episode data for session saving
         if hasattr(self, 'session_manager') and self.session_manager and self.session_manager.enabled:

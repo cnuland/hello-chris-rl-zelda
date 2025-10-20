@@ -146,9 +146,10 @@ class ZeldaConfigurableEnvironment(gym.Env):
         self.last_dialogue_state = 0  # Track NPC dialogue interactions
         self.last_room_id = None  # Track room transitions
         
-        # Dialogue auto-progression (to prevent getting stuck in dialogue)
-        self.dialogue_frames_counter = 0  # Count consecutive frames in dialogue
-        self.dialogue_auto_advance_delay = 15  # Press A every 15 frames to advance dialogue
+        # Dialogue handling - LLM takes full control during dialogue
+        self.in_dialogue_mode = False  # Track if currently in dialogue
+        self.dialogue_frames_since_last_llm = 0  # Count frames since last LLM call in dialogue
+        self.dialogue_llm_frequency = 10  # Call LLM every N frames during dialogue
         
         # Video recording (for debugging and visualization)
         self.save_video = self.config.get('emulator', {}).get('save_video', False)
@@ -289,36 +290,43 @@ class ZeldaConfigurableEnvironment(gym.Env):
         # 🎯 Track action for strategic reward calculation
         self.last_action = action
         
-        # 💬 DIALOGUE AUTO-PROGRESSION (prevent getting stuck in NPC dialogue)
-        # DISABLED FOR NOW - May be interfering with normal gameplay
-        # dialogue_state = self.bridge.get_memory(0xC2EF)  # CUTSCENE_INDEX
-        # menu_state = self.bridge.get_memory(0xD700)      # MENU_STATE
-        # 
-        # if dialogue_state > 0:
-        #     # In dialogue! Check if it's a choice menu or regular text
-        #     if menu_state > 0:
-        #         # CHOICE MENU (Yes/No) - DON'T auto-advance!
-        #         # Let PPO or game handle the selection naturally
-        #         self.dialogue_frames_counter = 0
-        #         
-        #         # Log when we detect choice menu
-        #         if self.step_count % 50 == 0:
-        #             print(f"🎯 DIALOGUE CHOICE MENU (state={dialogue_state}, menu={menu_state}) - Letting PPO choose")
-        #     else:
-        #         # REGULAR DIALOGUE TEXT - Auto-advance by pressing A
-        #         self.dialogue_frames_counter += 1
-        #         
-        #         if self.dialogue_frames_counter >= self.dialogue_auto_advance_delay:
-        #             # Auto-press A to advance dialogue text
-        #             self.bridge.step(ZeldaAction.A)
-        #             self.dialogue_frames_counter = 0
-        #             
-        #             # Log occasionally (not every frame)
-        #             if self.step_count % 50 == 0:
-        #                 print(f"💬 AUTO-ADVANCING DIALOGUE TEXT (state={dialogue_state}, step={self.step_count})")
-        # else:
-        #     # Not in dialogue, reset counter
-        #     self.dialogue_frames_counter = 0
+        # 💬 DIALOGUE MODE: LLM takes full control during conversations
+        dialogue_state = self.bridge.get_memory(0xC2EF)  # CUTSCENE_INDEX
+        menu_state = self.bridge.get_memory(0xD700)      # MENU_STATE
+        
+        # Check if entering or exiting dialogue
+        was_in_dialogue = self.in_dialogue_mode
+        self.in_dialogue_mode = (dialogue_state > 0)
+        
+        if self.in_dialogue_mode:
+            # IN DIALOGUE - LLM CONTROLS EVERYTHING!
+            self.dialogue_frames_since_last_llm += 1
+            
+            # Call LLM every N frames during dialogue (or every frame if needed)
+            if self.dialogue_frames_since_last_llm >= self.dialogue_llm_frequency:
+                self.dialogue_frames_since_last_llm = 0
+                
+                # Get LLM action for dialogue navigation
+                dialogue_action = self._get_llm_dialogue_action(dialogue_state, menu_state)
+                
+                if dialogue_action is not None:
+                    # Execute LLM's dialogue action (bypass PPO)
+                    self.bridge.step(dialogue_action)
+                    
+                    # Log dialogue control
+                    if not was_in_dialogue:
+                        print(f"💬 DIALOGUE MODE: LLM taking control (state={dialogue_state})")
+                    
+                    # Skip PPO action - LLM is handling dialogue
+                    obs = self._get_observation()
+                    reward = 0.0  # No reward during dialogue frames
+                    return obs, reward, False, False, self._get_info()
+        else:
+            # NOT in dialogue - PPO has full control
+            self.dialogue_frames_since_last_llm = 0
+            
+            if was_in_dialogue:
+                print(f"🎮 DIALOGUE ENDED: Returning control to PPO")
         
         # Convert action and execute with frame skip
         zelda_action = ZeldaAction(action)
