@@ -149,7 +149,7 @@ class ZeldaConfigurableEnvironment(gym.Env):
         # Dialogue handling - LLM takes full control during dialogue
         self.in_dialogue_mode = False  # Track if currently in dialogue
         self.dialogue_frames_since_last_llm = 0  # Count frames since last LLM call in dialogue
-        self.dialogue_llm_frequency = 10  # Call LLM every N frames during dialogue
+        self.dialogue_llm_frequency = 50  # Call LLM every N frames during dialogue (async, non-blocking)
         
         # Video recording (for debugging and visualization)
         self.save_video = self.config.get('emulator', {}).get('save_video', False)
