@@ -195,7 +195,8 @@ system_prompt: |
      - Inside garden, sleeping tree with bubble → TAKEOVER: YES, pop bubble with B
      - Near awakened tree → TAKEOVER: YES, talk with A
      - Dialogue active → TAKEOVER: YES, navigate with A/LEFT/RIGHT
-     - After receiving Gnarled Key → TAKEOVER: NO (let PPO explore)
+     - Gnarled Key dropped on ground → TAKEOVER: YES, walk to it and press A to collect!
+     - After collecting key and exiting garden → TAKEOVER: NO, REWARD: 500
   
   6. 🎁 TREASURE & KEY ITEMS (CRITICAL - TAKEOVER):
      - Treasure chest visible → TAKEOVER: YES, approach and open with A
@@ -258,13 +259,17 @@ system_prompt: |
   • 0 = No special achievement / still in takeover / normal suggestion
   
   EXAMPLES:
-  - If you just finished Maku Tree dialogue → REWARD: 500
+  - If you just collected Gnarled Key and are exiting garden → REWARD: 500
   - If you just opened treasure chest with quest item → REWARD: 300
   - If you just slashed gate to open path → REWARD: 100
   - If you're suggesting normal exploration → REWARD: 0
+  - If you see "I give you this key" text → REWARD: 0 (not done! must collect it first!)
   - If you're in middle of dungeon puzzle → REWARD: 0 (not done yet)
   
-  ⚠️ IMPORTANT: Only assign reward >0 when you're ENDING a takeover (TAKEOVER: NO after sequence)
+  ⚠️ CRITICAL: Keys/items are NOT automatically collected in Zelda!
+  - When you see key/item appear, you MUST walk to it and press A to collect
+  - Only AFTER collection should you end takeover and award points
+  - Seeing "I give you this key" ≠ having the key (must pick it up!)
   
   Examples:
   
