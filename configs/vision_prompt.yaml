@@ -238,12 +238,33 @@ system_prompt: |
   ❌ General navigation between areas
   
   OUTPUT FORMAT:
-  Respond with exactly FOUR lines:
+  Respond with exactly FIVE lines:
   
   Line 1: SCENE: [Brief description of what you see - one sentence]
   Line 2: THINKING: [What Link should do next in this situation - one sentence]
   Line 3: TAKEOVER: [YES if critical moment requiring your control, NO if PPO should handle]
   Line 4: ACTION: [Button name only]
+  Line 5: REWARD: [Number 0-500, reward to give PPO if this completes a takeover sequence]
+  
+  🏆 REWARD SCALE (assign when ending a TAKEOVER sequence):
+  
+  When you set TAKEOVER: NO after completing a critical sequence, assign a reward based on what was accomplished:
+  
+  REWARD VALUES:
+  • 500 = Major quest milestone (talked to Maku Tree, obtained Gnarled Key, entered dungeon)
+  • 300 = Significant progress (entered Maku Tree garden, opened important chest)
+  • 100 = Moderate achievement (slashed gate, collected key item, solved puzzle)
+  • 50 = Minor achievement (opened small chest, defeated mini-boss)
+  • 0 = No special achievement / still in takeover / normal suggestion
+  
+  EXAMPLES:
+  - If you just finished Maku Tree dialogue → REWARD: 500
+  - If you just opened treasure chest with quest item → REWARD: 300
+  - If you just slashed gate to open path → REWARD: 100
+  - If you're suggesting normal exploration → REWARD: 0
+  - If you're in middle of dungeon puzzle → REWARD: 0 (not done yet)
+  
+  ⚠️ IMPORTANT: Only assign reward >0 when you're ENDING a takeover (TAKEOVER: NO after sequence)
   
   Examples:
   
@@ -251,21 +272,31 @@ system_prompt: |
   THINKING: Continue exploring to find the Maku Tree garden entrance.
   TAKEOVER: NO
   ACTION: RIGHT
+  REWARD: 0
   
   SCENE: I see a gate with vines blocking the entrance to a garden with a large tree structure.
   THINKING: This is the Maku Tree entrance - slash the gate with sword then enter.
   TAKEOVER: YES
   ACTION: B
+  REWARD: 0
   
   SCENE: Link is inside a grove with a large sleeping tree showing a bubble floating from its nose.
   THINKING: Pop the bubble with sword to wake the Maku Tree, then talk to it.
   TAKEOVER: YES
   ACTION: B
+  REWARD: 0
+  
+  SCENE: Link is back in the village after completing the Maku Tree dialogue.
+  THINKING: Maku Tree sequence complete - PPO can resume exploration to find the dungeon.
+  TAKEOVER: NO
+  ACTION: LEFT
+  REWARD: 500
   
   SCENE: Link is standing next to an NPC in the village.
   THINKING: Talk to gather information, but this isn't critical to progression.
   TAKEOVER: NO
   ACTION: A
+  REWARD: 0
   
   Valid buttons: UP, DOWN, LEFT, RIGHT, A, B, NOP
   AVOID: START, SELECT (you handle menus separately)

@@ -54,6 +54,9 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         self._episode_count = 0
         self._total_reward = 0.0
         
+        # Track LLM takeover state for reward assignment
+        self._last_takeover_state = False  # Was LLM in control last step?
+        
         # Initialize exploration tracking
         self.rooms_discovered = set()
         self.grid_areas_explored = set()
@@ -739,12 +742,13 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                 if not raw_response:
                     return None
                 
-                # Parse response (expecting SCENE:, THINKING:, TAKEOVER:, ACTION:)
+                # Parse response (expecting SCENE:, THINKING:, TAKEOVER:, ACTION:, REWARD:)
                 scene_desc = ""
                 thinking = ""
                 takeover = False
                 is_dialogue = False  # Legacy dialogue detection still supported
                 action = ""
+                llm_reward = 0.0  # LLM-assigned reward for completing takeover sequence
                 
                 lines = raw_response.split('\n')
                 for line in lines:
@@ -758,6 +762,14 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                         takeover = ('YES' in takeover_val or 'TRUE' in takeover_val)
                     elif line.startswith('ACTION:'):
                         action = line.replace('ACTION:', '').strip()
+                    elif line.startswith('REWARD:'):
+                        reward_str = line.replace('REWARD:', '').strip()
+                        try:
+                            llm_reward = float(reward_str)
+                            # Clamp to valid range (0-500)
+                            llm_reward = max(0.0, min(500.0, llm_reward))
+                        except ValueError:
+                            llm_reward = 0.0
                     elif line.startswith('DIALOGUE:'):
                         # Legacy dialogue detection (backwards compatibility)
                         dialogue_val = line.replace('DIALOGUE:', '').strip().upper()
@@ -781,6 +793,7 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                         'thinking': thinking,  # LLM's reasoning about next steps
                         'action': action,
                         'takeover': takeover,  # LLM wants full control
+                        'llm_reward': llm_reward,  # LLM-assigned reward for completing sequence
                         'is_dialog': is_dialogue  # Legacy dialogue flag (subsumed by takeover)
                     }
                     return result
@@ -930,6 +943,7 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                     thinking = llm_result.get('thinking', '')
                     llm_action = llm_result.get('action', '')
                     takeover = llm_result.get('takeover', False)  # LLM wants full control
+                    llm_sequence_reward = llm_result.get('llm_reward', 0.0)  # LLM-assigned sequence completion reward
                     is_dialog = llm_result.get('is_dialog', False)  # Legacy dialogue flag
                     
                     self.last_llm_suggestion = llm_action  # Store action for HUD
@@ -939,6 +953,15 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                     if thinking:
                         print(f"🤔 LLM THINKING: {thinking}")
                     print(f"💡 LLM SUGGESTS: {llm_action}")
+                    
+                    # Check if LLM is ending a takeover sequence and awarding completion reward
+                    if not takeover and self._last_takeover_state and llm_sequence_reward > 0:
+                        print(f"🏆 LLM SEQUENCE COMPLETE! Awarding +{llm_sequence_reward:.0f} to PPO")
+                        print(f"   Achievement: {thinking[:80]}")
+                        llm_bonus += llm_sequence_reward
+                    
+                    # Update takeover state for next step
+                    self._last_takeover_state = takeover
                     
                     # AUTONOMOUS ACTION MODE: LLM takes full control for critical moments
                     if is_vision_step and takeover and llm_action:
