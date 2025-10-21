@@ -676,17 +676,8 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                 menu_status=menu_status
             )
             
-            # DIALOGUE DETECTION: For vision calls, add dialogue detection to prompt
-            if screenshot_base64:
-                user_prompt += (
-                    "\n\n🎯 DIALOGUE DETECTION:\n"
-                    "If you see an NPC dialogue box or text on screen, include in your response:\n"
-                    "DIALOGUE: YES\n"
-                    "Then suggest the button to advance dialogue (usually A, or LEFT/RIGHT for choices).\n\n"
-                    "If no dialogue is visible, include:\n"
-                    "DIALOGUE: NO\n"
-                    "Then suggest a strategic movement/action."
-                )
+            # Vision prompt already includes autonomous action mode instructions
+            # No additional prompt modification needed - prompt is in vision_prompt.yaml
             
             # Prepare API request (different format for vision vs text-only)
             if screenshot_base64:
@@ -748,21 +739,32 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                 if not raw_response:
                     return None
                 
-                # Parse response (expecting SCENE:, ACTION:, and optionally DIALOGUE:)
+                # Parse response (expecting SCENE:, THINKING:, TAKEOVER:, ACTION:)
                 scene_desc = ""
+                thinking = ""
+                takeover = False
+                is_dialogue = False  # Legacy dialogue detection still supported
                 action = ""
-                is_dialogue = False
                 
                 lines = raw_response.split('\n')
                 for line in lines:
                     line = line.strip()
                     if line.startswith('SCENE:'):
                         scene_desc = line.replace('SCENE:', '').strip()
+                    elif line.startswith('THINKING:'):
+                        thinking = line.replace('THINKING:', '').strip()
+                    elif line.startswith('TAKEOVER:'):
+                        takeover_val = line.replace('TAKEOVER:', '').strip().upper()
+                        takeover = ('YES' in takeover_val or 'TRUE' in takeover_val)
                     elif line.startswith('ACTION:'):
                         action = line.replace('ACTION:', '').strip()
                     elif line.startswith('DIALOGUE:'):
+                        # Legacy dialogue detection (backwards compatibility)
                         dialogue_val = line.replace('DIALOGUE:', '').strip().upper()
                         is_dialogue = ('YES' in dialogue_val or 'TRUE' in dialogue_val)
+                        # If dialogue detected, treat it as a takeover
+                        if is_dialogue:
+                            takeover = True
                 
                 # Fallback: if no structured format, try to extract action from anywhere
                 if not action:
@@ -775,12 +777,12 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                 # If we have at least an action, return it
                 if action:
                     result = {
-                        'scene': scene_desc if scene_desc else raw_response[:100],  # Use full response as scene if not parsed
-                        'action': action
+                        'scene': scene_desc if scene_desc else raw_response[:100],
+                        'thinking': thinking,  # LLM's reasoning about next steps
+                        'action': action,
+                        'takeover': takeover,  # LLM wants full control
+                        'is_dialog': is_dialogue  # Legacy dialogue flag (subsumed by takeover)
                     }
-                    # Add dialogue flag for vision calls
-                    if screenshot_base64:
-                        result['is_dialog'] = is_dialogue
                     return result
                 
                 return None
@@ -923,21 +925,23 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                     self.llm_call_count += 1
                     self.llm_success_count += 1
                     
-                    # Extract scene description, action, and dialogue flag
+                    # Extract LLM response fields
                     scene_desc = llm_result.get('scene', '')
+                    thinking = llm_result.get('thinking', '')
                     llm_action = llm_result.get('action', '')
-                    is_dialog = llm_result.get('is_dialog', False)  # Vision calls include dialogue detection
+                    takeover = llm_result.get('takeover', False)  # LLM wants full control
+                    is_dialog = llm_result.get('is_dialog', False)  # Legacy dialogue flag
                     
                     self.last_llm_suggestion = llm_action  # Store action for HUD
                     
-                    # Log what the LLM sees and suggests
+                    # Log what the LLM sees and thinks
                     print(f"👁️  LLM SEES: {scene_desc}")
+                    if thinking:
+                        print(f"🤔 LLM THINKING: {thinking}")
                     print(f"💡 LLM SUGGESTS: {llm_action}")
-                    if is_vision_step and is_dialog:
-                        print(f"💬 DIALOGUE FLAG: LLM detected dialogue on screen")
                     
-                    # DIALOGUE TAKEOVER: If vision LLM detects dialogue, execute immediately (bypass PPO)
-                    if is_vision_step and is_dialog and llm_action:
+                    # AUTONOMOUS ACTION MODE: LLM takes full control for critical moments
+                    if is_vision_step and takeover and llm_action:
                         from emulator.input_map import ZeldaAction
                         action_map = {
                             'A': ZeldaAction.A,
@@ -946,11 +950,20 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                             'UP': ZeldaAction.UP,
                             'DOWN': ZeldaAction.DOWN,
                             'B': ZeldaAction.B,
+                            'NOP': ZeldaAction.NOP,
                         }
-                        dialogue_action = action_map.get(llm_action.upper(), ZeldaAction.A)
-                        print(f"💬 DIALOGUE DETECTED: LLM executing {llm_action} (bypassing PPO)")
-                        self.bridge.step(dialogue_action)
-                        # No alignment bonus - this is a takeover, not a suggestion
+                        takeover_action = action_map.get(llm_action.upper(), ZeldaAction.A)
+                        
+                        # Determine takeover reason for logging
+                        if is_dialog:
+                            print(f"💬 DIALOGUE TAKEOVER: LLM executing {llm_action} (bypassing PPO)")
+                        else:
+                            print(f"🎯 CRITICAL TAKEOVER: LLM executing {llm_action} (bypassing PPO)")
+                            if thinking:
+                                print(f"   Reason: {thinking[:80]}")
+                        
+                        self.bridge.step(takeover_action)
+                        # No alignment bonus - this is autonomous control, not a suggestion
                         llm_bonus = 0.0
                     # LLM-EXCLUSIVE START BUTTON HANDLING
                     elif llm_action and llm_action.upper() == "START":
@@ -961,7 +974,7 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                         # No alignment bonus - this is a command, not a suggestion
                         llm_bonus = 0.0
                     else:
-                        # Normal alignment bonus for non-START actions
+                        # Normal alignment bonus for suggestions (PPO still in control)
                         llm_bonus = self.compute_llm_alignment_bonus(action, llm_action, is_vision=is_vision_step)
                         
                         if llm_bonus > 0:

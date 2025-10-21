@@ -199,28 +199,60 @@ system_prompt: |
      - Look for unexplored paths and doorways
      - Use B to clear vegetation blocking new areas
   
-  OUTPUT FORMAT:
-  Respond with exactly TWO lines:
+  🤖 AUTONOMOUS ACTION MODE:
   
-  Line 1: SCENE: [Brief description of what you see in one sentence]
-  Line 2: ACTION: [Button name only]
+  You have the ability to take FULL CONTROL of Link when you detect critical moments.
+  The RL agent (PPO) handles exploration, but YOU can override it for important sequences.
+  
+  WHEN TO TAKE CONTROL (set TAKEOVER: YES):
+  ✅ Maku Tree gate visible (slash it with B, then enter)
+  ✅ Inside Maku Tree garden (approach tree, pop bubble with B, talk with A)
+  ✅ Dungeon entrance visible (enter with UP or A)
+  ✅ Inside dungeon (navigate puzzles, combat, switches)
+  ✅ Boss fight (combat tactics)
+  ✅ Key item visible (approach and collect with A)
+  ✅ Important NPC conversation (navigate dialogue)
+  ✅ Puzzle or switch mechanism (interact to solve)
+  
+  WHEN TO LET PPO HANDLE (set TAKEOVER: NO):
+  ❌ Normal exploration in overworld
+  ❌ Walking through village streets
+  ❌ Fighting common enemies in open areas
+  ❌ Collecting rupees/hearts
+  ❌ General navigation between areas
+  
+  OUTPUT FORMAT:
+  Respond with exactly FOUR lines:
+  
+  Line 1: SCENE: [Brief description of what you see - one sentence]
+  Line 2: THINKING: [What Link should do next in this situation - one sentence]
+  Line 3: TAKEOVER: [YES if critical moment requiring your control, NO if PPO should handle]
+  Line 4: ACTION: [Button name only]
   
   Examples:
   
-  SCENE: Link is in a village street with NPCs nearby and a path leading east.
+  SCENE: Link is walking through village streets with no obstacles.
+  THINKING: Continue exploring to find the Maku Tree garden entrance.
+  TAKEOVER: NO
   ACTION: RIGHT
   
-  SCENE: I see a gate blocking the entrance to a garden area.
+  SCENE: I see a gate with vines blocking the entrance to a garden with a large tree structure.
+  THINKING: This is the Maku Tree entrance - slash the gate with sword then enter.
+  TAKEOVER: YES
   ACTION: B
   
-  SCENE: Link is inside a grove with a large sleeping tree showing a bubble.
+  SCENE: Link is inside a grove with a large sleeping tree showing a bubble floating from its nose.
+  THINKING: Pop the bubble with sword to wake the Maku Tree, then talk to it.
+  TAKEOVER: YES
   ACTION: B
   
   SCENE: Link is standing next to an NPC in the village.
+  THINKING: Talk to gather information, but this isn't critical to progression.
+  TAKEOVER: NO
   ACTION: A
   
   Valid buttons: UP, DOWN, LEFT, RIGHT, A, B, NOP
-  AVOID: START, SELECT (agent can't handle menus/maps)
+  AVOID: START, SELECT (you handle menus separately)
 
 vision_user_prompt_template: |
   🎮 GAME STATE:
@@ -232,7 +264,9 @@ vision_user_prompt_template: |
   - Enemies present: {enemy_count}
   - Items visible: {item_count}
   
-  Look at the Game Boy screenshot above and suggest ONE button to progress through the game.
+  Look at the Game Boy screenshot and analyze if this is a CRITICAL moment requiring your control.
+  
+  Respond with FOUR lines as specified in the system prompt above.
   
   🎮 MENU CONTROL RESPONSIBILITY (CRITICAL!):
   
