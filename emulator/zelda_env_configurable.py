@@ -174,6 +174,11 @@ class ZeldaConfigurableEnvironment(gym.Env):
         self.visited_grid_squares = {}   # Track grid squares per room: {room_id: set((gx, gy))}
         self.last_action = None          # Track last action taken
         
+        # Room camping tracking (penalize staying in same room too long)
+        self.current_room_id = None      # Current room Link is in
+        self.steps_in_current_room = 0   # Steps spent in current room
+        self.room_camping_threshold = 200  # Start penalty after N steps in same room
+        
         # Smart menu usage tracking
         self.last_equipped_items = (0, 0)  # Track (A button, B button) items
         self.consecutive_menu_opens = 0     # Count consecutive menu actions
@@ -434,13 +439,8 @@ class ZeldaConfigurableEnvironment(gym.Env):
             # else: Link is stuck, no movement reward
         # else: No movement reward if stuck (position unchanged)
         
-        # Position stuck penalty (staying in same X,Y)
-        # NOTE: Currently disabled (0.0) due to Y-coordinate bug
-        position_stuck_penalty = reward_config.get('position_stuck', 0.0)
-        if self.stuck_counter > 5:  # If stuck for more than 5 steps
-            total_reward += position_stuck_penalty
-            if self.stuck_counter % 10 == 0 and position_stuck_penalty != 0:  # Log only if penalty active
-                print(f"⚠️  POSITION STUCK! Same spot for {self.stuck_counter} steps ({position_stuck_penalty:.1f} penalty)")
+        # DISABLED: Position stuck penalty (X,Y coordinates unreliable)
+        # Replaced by room camping penalty below
         
         # NOTE: Menu logic removed - START is now LLM-exclusive!
         # PPO cannot press START (not in action space)
@@ -452,6 +452,25 @@ class ZeldaConfigurableEnvironment(gym.Env):
                 current_room = self.bridge.get_memory(0xC63B)  # Current room/screen ID
                 dialogue_state = self.bridge.get_memory(0xC2EF)  # Dialogue/cutscene state
                 dungeon_floor = self.bridge.get_memory(0xC63D)  # Dungeon floor (0 = overworld)
+                
+                # ROOM CAMPING PENALTY - Penalize staying in same room too long
+                if current_room != self.current_room_id:
+                    # Room changed! Reset counter
+                    self.current_room_id = current_room
+                    self.steps_in_current_room = 0
+                else:
+                    # Still in same room, increment counter
+                    self.steps_in_current_room += 1
+                    
+                    # Apply escalating penalty after threshold
+                    if self.steps_in_current_room > self.room_camping_threshold:
+                        # Penalty grows with time: -0.1 per step beyond threshold
+                        camping_penalty = reward_config.get('room_camping_penalty', -0.1)
+                        total_reward += camping_penalty
+                        
+                        # Log occasionally
+                        if self.steps_in_current_room % 100 == 0:
+                            print(f"🏕️ ROOM CAMPING PENALTY! {self.steps_in_current_room} steps in room {current_room} ({camping_penalty:.1f}/step)")
                 
                 # NEW: Track inventory changes (detect item acquisition)
                 current_inventory = []
