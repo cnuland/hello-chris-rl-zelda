@@ -662,7 +662,19 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
             menu_state = game_state.get('game', {}).get('menu_state', 0)
             menu_status = "MENU_OPEN" if menu_state > 0 else "GAMEPLAY"
             
-            print(f"📤 SENDING TO LLM: {location_name}, health={health}/{max_health}, equipped=[A:{a_item_name}, B:{b_item_name}], state={menu_status}")
+            # Stuck detection (for LLM unstuck assistance)
+            stuck_steps = getattr(self, 'steps_in_current_room', 0)
+            is_stuck = stuck_steps > 500  # Consider stuck after 500 steps in same room
+            
+            # Building detection (rooms 0x30-0x5F are typically indoor locations)
+            is_indoor = (0x30 <= room_id <= 0x4F) or (0x50 <= room_id <= 0x5F and room_id not in range(0x50, 0x60))
+            # More reliable: check if location name suggests indoor
+            is_indoor_location = any(word in location_name.lower() for word in ['shop', 'house', 'interior', 'room'])
+            
+            stuck_hint = f" [⚠️ STUCK: {stuck_steps} steps in this room!]" if is_stuck else ""
+            indoor_hint = f" [🏠 INDOOR: Shop/house interior]" if (is_indoor or is_indoor_location) else ""
+            
+            print(f"📤 SENDING TO LLM: {location_name}, health={health}/{max_health}, equipped=[A:{a_item_name}, B:{b_item_name}], state={menu_status}{stuck_hint}{indoor_hint}")
             
             # Format prompt with game state
             # NOTE: X,Y removed - Y position is broken (stuck at 0), misleading to send
@@ -679,8 +691,11 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                 menu_status=menu_status
             )
             
-            # Vision prompt already includes autonomous action mode instructions
-            # No additional prompt modification needed - prompt is in vision_prompt.yaml
+            # Add stuck/indoor hints for LLM autonomous triggers
+            if is_stuck:
+                user_prompt += f"\n\n⚠️ STUCK ALERT: Link has been in this room for {stuck_steps} steps! Help PPO escape to a new area."
+            if is_indoor or is_indoor_location:
+                user_prompt += "\n\n🏠 BUILDING INTERIOR: You are inside a shop/house. Handle NPCs, purchases, and exit when done."
             
             # Prepare API request (different format for vision vs text-only)
             if screenshot_base64:
