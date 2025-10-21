@@ -253,6 +253,46 @@ class ZeldaHUDCallback(DefaultCallbacks):
                     ContentType='application/gzip'
                 )
                 
+                # ALSO SAVE: Standalone PyTorch model weights (.pt file) for local inference
+                try:
+                    print(f"💾 Extracting PyTorch model weights for local inference...")
+                    
+                    # Get the policy model from the algorithm
+                    policy = algorithm.get_policy()
+                    model = policy.model
+                    
+                    # Extract PyTorch state dict
+                    import torch
+                    model_state_dict = model.state_dict()
+                    
+                    # Save to temp file
+                    pt_path = Path(temp_dir) / f"model_weights_{iteration:06d}.pt"
+                    torch.save(model_state_dict, pt_path)
+                    
+                    pt_size = pt_path.stat().st_size
+                    print(f"   ✅ PyTorch weights extracted: {pt_size:,} bytes")
+                    
+                    # Upload standalone .pt file to S3
+                    with open(pt_path, 'rb') as f:
+                        pt_bytes = f.read()
+                    
+                    pt_s3_key = f"{self._session_manager.session_id}/model_weights/model_{iteration:06d}.pt"
+                    
+                    self._session_manager.s3_client.put_object(
+                        Bucket='sessions',
+                        Key=pt_s3_key,
+                        Body=pt_bytes,
+                        ContentType='application/octet-stream'
+                    )
+                    
+                    pt_size_mb = pt_size / 1024 / 1024
+                    print(f"   ✅ PyTorch weights uploaded: {pt_size_mb:.1f} MB")
+                    print(f"   Location: s3://sessions/{pt_s3_key}")
+                    
+                except Exception as e:
+                    print(f"   ⚠️  Failed to save PyTorch weights: {e}")
+                    # Don't fail entire checkpoint if .pt save fails
+                
                 # Also save metadata
                 checkpoint_data = {
                     'iteration': iteration,
@@ -260,6 +300,7 @@ class ZeldaHUDCallback(DefaultCallbacks):
                     'episode_return_mean': result.get('episode_return_mean', 0.0),
                     'episode_len_mean': result.get('episode_len_mean', 0.0),
                     'checkpoint_path': s3_key,
+                    'model_weights_path': f"{self._session_manager.session_id}/model_weights/model_{iteration:06d}.pt",
                 }
                 
                 self._session_manager.save_checkpoint(
@@ -271,9 +312,9 @@ class ZeldaHUDCallback(DefaultCallbacks):
                 
                 size_mb = tarball_size / 1024 / 1024
                 print(f"✅ FULL Ray checkpoint saved to S3!")
-                print(f"   Location: s3://sessions/{s3_key}")
-                print(f"   Size: {size_mb:.1f} MB")
-                print(f"   Can resume training from this checkpoint!")
+                print(f"   Ray checkpoint: s3://sessions/{s3_key} ({size_mb:.1f} MB)")
+                print(f"   PyTorch weights: s3://sessions/{pt_s3_key} ({pt_size_mb:.1f} MB)")
+                print(f"   Can resume training OR run local inference!")
                 
         except Exception as e:
             print(f"❌ Error saving full checkpoint: {e}")
