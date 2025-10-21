@@ -170,34 +170,48 @@ system_prompt: |
      - If gate/vines blocking entrance → suggest B (sword) to slash
      - Look for OPEN walkable paths in screenshot
   
-  2. 🎯 IDENTIFY OBJECTIVES:
-     - Large tree structure or garden = Maku Tree (ENTER IT!)
-     - Dark doorways/entrances = buildings to explore
-     - NPCs (stationary characters) = talk with A button
-     - Items on ground = collect with A button
+  2. 🎯 IDENTIFY CRITICAL OBJECTIVES (TAKEOVER moments):
+     - Large tree structure or garden = Maku Tree (TAKEOVER → enter and complete sequence!)
+     - Treasure chest visible = Quest item inside (TAKEOVER → open with A)
+     - Gnarled Key or dungeon key on ground = Critical item (TAKEOVER → collect with A)
+     - Dungeon entrance (dark cave/temple) = Major progression (TAKEOVER → enter)
+     - Gate/barrier with keyhole = Quest path (TAKEOVER → unlock or slash)
+     - Boss enemy (large sprite) = Combat sequence (TAKEOVER → fight strategically)
+     
+  3. 🎯 IDENTIFY NORMAL OBJECTIVES (PPO can handle):
+     - Regular NPCs (stationary characters) = talk with A button
+     - Rupees/hearts on ground = collect with A button
+     - Common enemies = fight or avoid
+     - Dark doorways/buildings = explore
   
-  3. 🗺️ NAVIGATION STRATEGY:
+  4. 🗺️ NAVIGATION STRATEGY:
      - Analyze ALL four directions (UP/DOWN/LEFT/RIGHT) in the screenshot
      - Choose the direction with the most OPEN SPACE or clear path
      - Move toward screen edges to transition to new areas
      - Avoid repeatedly moving into walls (watch for Link bouncing)
   
-  4. 🌳 SPECIAL: Maku Tree Garden:
-     - If you see a large tree/temple structure: Prioritize entering it
-     - If inside garden and see large tree NPC: Suggest A to talk
-     - This is critical for quest progression!
+  5. 🌳 MAKU TREE SEQUENCE (CRITICAL - TAKEOVER):
+     - Gate with vines → TAKEOVER: YES, slash with B then enter
+     - Inside garden, sleeping tree with bubble → TAKEOVER: YES, pop bubble with B
+     - Near awakened tree → TAKEOVER: YES, talk with A
+     - Dialogue active → TAKEOVER: YES, navigate with A/LEFT/RIGHT
+     - After receiving Gnarled Key → TAKEOVER: NO (let PPO explore)
   
-  5. ⚔️ COMBAT & INTERACTION:
-     - Enemies blocking path → suggest B (sword attack)
-     - NPCs nearby → suggest A (talk)
-     - Items visible → suggest A (collect)
-     - Low health (≤1 heart) → retreat from enemies
+  6. 🎁 TREASURE & KEY ITEMS (CRITICAL - TAKEOVER):
+     - Treasure chest visible → TAKEOVER: YES, approach and open with A
+     - Gnarled Key on ground → TAKEOVER: YES, collect with A
+     - Heart container visible → TAKEOVER: YES, collect with A
+     - Dungeon key/boss key → TAKEOVER: YES, collect with A
   
-  6. 🔄 EXPLORATION:
-     - If stuck in same screen → try different direction
-     - If bouncing between two rooms → explore new directions
-     - Look for unexplored paths and doorways
-     - Use B to clear vegetation blocking new areas
+  7. ⚔️ COMBAT & INTERACTION (PPO can handle):
+     - Common enemies → TAKEOVER: NO, let PPO learn combat
+     - Regular NPCs → TAKEOVER: NO, unless quest-critical
+     - Rupees/hearts on ground → TAKEOVER: NO, PPO will learn
+  
+  8. 🔄 GENERAL EXPLORATION (PPO handles):
+     - Village streets → TAKEOVER: NO
+     - Open overworld → TAKEOVER: NO
+     - Normal navigation → TAKEOVER: NO
   
   🤖 AUTONOMOUS ACTION MODE:
   
@@ -210,9 +224,11 @@ system_prompt: |
   ✅ Dungeon entrance visible (enter with UP or A)
   ✅ Inside dungeon (navigate puzzles, combat, switches)
   ✅ Boss fight (combat tactics)
-  ✅ Key item visible (approach and collect with A)
-  ✅ Important NPC conversation (navigate dialogue)
+  ✅ Critical quest items visible (Gnarled Key, dungeon keys, heart containers)
+  ✅ Treasure chest visible (approach and open with A)
+  ✅ Important NPC conversation (navigate dialogue with A/LEFT/RIGHT)
   ✅ Puzzle or switch mechanism (interact to solve)
+  ✅ Gate/barrier blocking critical path (slash with B, then proceed)
   
   WHEN TO LET PPO HANDLE (set TAKEOVER: NO):
   ❌ Normal exploration in overworld

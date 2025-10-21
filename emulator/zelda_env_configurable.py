@@ -177,7 +177,7 @@ class ZeldaConfigurableEnvironment(gym.Env):
         # Room camping tracking (penalize staying in same room too long)
         self.current_room_id = None      # Current room Link is in
         self.steps_in_current_room = 0   # Steps spent in current room
-        self.room_camping_threshold = 200  # Start penalty after N steps in same room
+        self.room_camping_threshold = 100  # REDUCED from 200: Start penalty after N steps in same room
         
         # Smart menu usage tracking
         self.last_equipped_items = (0, 0)  # Track (A button, B button) items
