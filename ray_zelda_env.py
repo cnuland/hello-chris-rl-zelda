@@ -57,6 +57,10 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         # Track LLM takeover state for reward assignment
         self._last_takeover_state = False  # Was LLM in control last step?
         
+        # Track stuck recovery mode (LLM maintains control until room change)
+        self._stuck_recovery_active = False  # Is LLM currently unsticking PPO?
+        self._stuck_recovery_start_room = None  # Room where stuck recovery started
+        
         # Initialize exploration tracking
         self.rooms_discovered = set()
         self.grid_areas_explored = set()
@@ -968,6 +972,37 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                     if thinking:
                         print(f"🤔 LLM THINKING: {thinking}")
                     print(f"💡 LLM SUGGESTS: {llm_action}")
+                    
+                    # Get current room for stuck recovery tracking
+                    current_room_id = game_state.get('player', {}).get('room', 0)
+                    stuck_steps = getattr(self, 'steps_in_current_room', 0)
+                    
+                    # STUCK RECOVERY OVERRIDE: Force takeover until room changes
+                    if stuck_steps > 300:  # Stuck threshold (reduced from 500)
+                        if not self._stuck_recovery_active:
+                            # Initiate stuck recovery
+                            self._stuck_recovery_active = True
+                            self._stuck_recovery_start_room = current_room_id
+                            print(f"🚨 STUCK RECOVERY INITIATED! {stuck_steps} steps in room {current_room_id}")
+                            print(f"   LLM will maintain control until room transition")
+                        
+                        # Check if room changed (escaped!)
+                        if current_room_id != self._stuck_recovery_start_room:
+                            print(f"✅ STUCK RECOVERY COMPLETE! Room {self._stuck_recovery_start_room} → {current_room_id}")
+                            self._stuck_recovery_active = False
+                            self._stuck_recovery_start_room = None
+                        else:
+                            # Still stuck - override LLM's TAKEOVER decision
+                            if not takeover:
+                                print(f"🔒 STUCK RECOVERY OVERRIDE: Forcing TAKEOVER=YES (still in room {current_room_id})")
+                            takeover = True  # Force takeover until room changes!
+                    else:
+                        # Not stuck - normal operation
+                        if self._stuck_recovery_active:
+                            # Was in recovery but now <300 steps (room changed)
+                            print(f"✅ STUCK RECOVERY COMPLETE! Room changed naturally")
+                            self._stuck_recovery_active = False
+                            self._stuck_recovery_start_room = None
                     
                     # Check if LLM is ending a takeover sequence and awarding completion reward
                     if not takeover and self._last_takeover_state and llm_sequence_reward > 0:
