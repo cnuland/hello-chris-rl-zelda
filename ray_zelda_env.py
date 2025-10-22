@@ -911,10 +911,18 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         import random
         llm_bonus = 0.0
         
-        # NEW: Random probability-based sampling (better than fixed intervals!)
-        # Vision and text are mutually exclusive (vision takes precedence if both trigger)
-        is_vision_step = self.llm_enabled and (random.random() < self.llm_vision_probability)
-        is_text_step = self.llm_enabled and (not is_vision_step) and (random.random() < self.llm_text_probability)
+        # Check if agent is stuck (for 100% LLM call rate during stuck recovery)
+        stuck_steps = getattr(self, 'steps_in_current_room', 0)
+        is_stuck_mode = stuck_steps > 300  # Stuck threshold
+        
+        # STUCK MODE: Call LLM EVERY step (100% rate) until unstuck
+        if is_stuck_mode:
+            is_vision_step = self.llm_enabled  # Force vision call every step when stuck!
+            is_text_step = False
+        else:
+            # NORMAL MODE: Random probability-based sampling
+            is_vision_step = self.llm_enabled and (random.random() < self.llm_vision_probability)
+            is_text_step = self.llm_enabled and (not is_vision_step) and (random.random() < self.llm_text_probability)
         
         # Track if LLM ran this step (for HUD duplicate detection)
         llm_ran_this_step = is_vision_step or is_text_step
