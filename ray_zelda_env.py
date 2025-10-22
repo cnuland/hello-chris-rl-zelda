@@ -906,9 +906,18 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         import random
         llm_bonus = 0.0
         
-        # Random probability-based sampling (3% vision, 0% text)
-        is_vision_step = self.llm_enabled and (random.random() < self.llm_vision_probability)
-        is_text_step = self.llm_enabled and (not is_vision_step) and (random.random() < self.llm_text_probability)
+        # TAKEOVER MODE: Call LLM EVERY step when in autonomous control mode
+        # This ensures continuous LLM control during critical sequences (Maku Tree, dungeons, etc.)
+        if self._last_takeover_state:
+            # LLM is currently in control - call EVERY step to maintain sequence
+            is_vision_step = self.llm_enabled  # 100% call rate during takeover
+            is_text_step = False
+            if self._step_count % 10 == 0:  # Log occasionally to avoid spam
+                print(f"🔄 TAKEOVER MODE: LLM called every step (sequence step {self._takeover_step_count})")
+        else:
+            # NORMAL MODE: Random probability-based sampling (3% vision, 0% text)
+            is_vision_step = self.llm_enabled and (random.random() < self.llm_vision_probability)
+            is_text_step = self.llm_enabled and (not is_vision_step) and (random.random() < self.llm_text_probability)
         
         # Track if LLM ran this step (for HUD duplicate detection)
         llm_ran_this_step = is_vision_step or is_text_step
