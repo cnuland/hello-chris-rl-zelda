@@ -60,6 +60,10 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         self._total_takeover_sequences = 0  # Total number of takeover sequences
         self._takeover_sequence_lengths = []  # Length of each takeover sequence (for stats)
         
+        # Takeover release cooldown (LLM must confirm release for N steps)
+        self._release_cooldown_count = 0  # How many times LLM said TAKEOVER: NO
+        self._release_cooldown_threshold = 10  # Must say NO for 10 consecutive calls to release
+        
         # Track recent room history for unique transition rewards
         self.recent_rooms = []  # Last 10 rooms visited
         
@@ -976,18 +980,40 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                         print(f"🤔 LLM THINKING: {thinking}")
                     print(f"💡 LLM SUGGESTS: {llm_action}")
                     
+                    # RELEASE COOLDOWN: LLM must confirm TAKEOVER: NO for 10 consecutive calls
+                    # This prevents premature release after completing sub-tasks
+                    if self._last_takeover_state and not takeover:
+                        # LLM wants to release - start cooldown
+                        self._release_cooldown_count += 1
+                        steps_remaining = self._release_cooldown_threshold - self._release_cooldown_count
+                        
+                        if self._release_cooldown_count < self._release_cooldown_threshold:
+                            # Not confirmed yet - override and maintain control
+                            print(f"⏳ RELEASE COOLDOWN: LLM says NO, but {steps_remaining} steps remain to confirm")
+                            print(f"   LLM can change mind based on what it sees next")
+                            takeover = True  # Force continued takeover
+                        else:
+                            # Cooldown complete - confirmed release
+                            print(f"✅ RELEASE CONFIRMED: LLM said NO for {self._release_cooldown_threshold} consecutive steps")
+                            self._release_cooldown_count = 0
+                            # takeover stays False - will actually release below
+                    elif takeover:
+                        # LLM wants takeover (or continuing) - reset cooldown
+                        self._release_cooldown_count = 0
+                    
                     # Track takeover state transitions and duration
                     if takeover and not self._last_takeover_state:
                         # Starting new takeover sequence
                         self._total_takeover_sequences += 1
                         self._takeover_step_count = 1
+                        self._release_cooldown_count = 0  # Reset cooldown for new sequence
                         print(f"🎬 TAKEOVER SEQUENCE #{self._total_takeover_sequences} STARTED")
                         print(f"   Trigger: {thinking[:80]}")
                     elif takeover and self._last_takeover_state:
                         # Continuing takeover sequence
                         self._takeover_step_count += 1
                     elif not takeover and self._last_takeover_state:
-                        # Ending takeover sequence
+                        # Ending takeover sequence (after cooldown confirmation)
                         self._takeover_sequence_lengths.append(self._takeover_step_count)
                         avg_length = sum(self._takeover_sequence_lengths) / len(self._takeover_sequence_lengths)
                         print(f"🎬 TAKEOVER SEQUENCE #{self._total_takeover_sequences} ENDED")
