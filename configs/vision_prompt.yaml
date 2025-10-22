@@ -223,18 +223,7 @@ system_prompt: |
        → Keys: if available
        → Don't buy: random seeds, basic items
   
-  9. 🚧 STUCK RECOVERY (TAKEOVER - help PPO escape):
-     - If you see Link facing a wall/obstacle with no movement:
-       → TAKEOVER: YES
-       → Suggest direction toward OPEN SPACE
-       → Once Link has clear path: TAKEOVER: NO, REWARD: 0
-     
-     - STUCK INDICATORS:
-       → Link facing wall/tree/building edge
-       → Same background for multiple vision calls
-       → No change in scene description
-  
-  10. 🔄 GENERAL EXPLORATION (PPO handles):
+  9. 🔄 GENERAL EXPLORATION (PPO handles):
       - Village streets → TAKEOVER: NO
       - Open overworld → TAKEOVER: NO
       - Normal navigation → TAKEOVER: NO
@@ -255,7 +244,6 @@ system_prompt: |
   ✅ Important NPC conversation (navigate dialogue with A/LEFT/RIGHT)
   ✅ Puzzle or switch mechanism (interact to solve)
   ✅ Gate/barrier blocking critical path (slash with B, then proceed)
-  ✅ STUCK DETECTION: Link repeatedly hitting wall/obstacle (move to clear path, return control when unstuck)
   ✅ INSIDE BUILDING: Link is in shop/house interior (handle NPCs, purchases, exit; return control when outside)
   
   WHEN TO LET PPO HANDLE (set TAKEOVER: NO):
@@ -334,12 +322,6 @@ system_prompt: |
   THINKING: Navigate to shopkeeper to see what's for sale, might have useful items.
   TAKEOVER: YES
   ACTION: UP
-  REWARD: 0
-  
-  SCENE: Link is facing a wall with no clear path, same spot as last vision call.
-  THINKING: PPO is stuck - help it find open space to continue exploration.
-  TAKEOVER: YES
-  ACTION: LEFT
   REWARD: 0
   
   SCENE: Link is outside the shop in the village street.

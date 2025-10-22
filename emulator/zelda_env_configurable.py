@@ -179,6 +179,9 @@ class ZeldaConfigurableEnvironment(gym.Env):
         self.steps_in_current_room = 0   # Steps spent in current room
         self.room_camping_threshold = 100  # REDUCED from 200: Start penalty after N steps in same room
         
+        # Room transition tracking (reward unique room visits)
+        self.recent_room_history = []  # Track last 10 rooms visited (prevent farming)
+        
         # Smart menu usage tracking
         self.last_equipped_items = (0, 0)  # Track (A button, B button) items
         self.consecutive_menu_opens = 0     # Count consecutive menu actions
@@ -455,7 +458,20 @@ class ZeldaConfigurableEnvironment(gym.Env):
                 
                 # ROOM CAMPING PENALTY - Penalize staying in same room too long
                 if current_room != self.current_room_id:
-                    # Room changed! Reset counter
+                    # Room changed! Reset counter and check for transition reward
+                    
+                    # UNIQUE ROOM TRANSITION REWARD (prevent farming)
+                    # Only reward if this room wasn't in last 10 visited
+                    if current_room not in self.recent_room_history[-10:]:
+                        transition_reward = reward_config.get('unique_room_transition', 50.0)
+                        total_reward += transition_reward
+                        print(f"🚪 UNIQUE ROOM TRANSITION! → Room {current_room} (+{transition_reward:.1f})")
+                    
+                    # Update room history (keep last 10)
+                    self.recent_room_history.append(current_room)
+                    if len(self.recent_room_history) > 10:
+                        self.recent_room_history.pop(0)
+                    
                     self.current_room_id = current_room
                     self.steps_in_current_room = 0
                 else:

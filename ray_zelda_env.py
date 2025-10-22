@@ -57,9 +57,8 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         # Track LLM takeover state for reward assignment
         self._last_takeover_state = False  # Was LLM in control last step?
         
-        # Track stuck recovery mode (LLM maintains control until room change)
-        self._stuck_recovery_active = False  # Is LLM currently unsticking PPO?
-        self._stuck_recovery_start_room = None  # Room where stuck recovery started
+        # Track recent room history for unique transition rewards
+        self.recent_rooms = []  # Last 10 rooms visited
         
         # Initialize exploration tracking
         self.rooms_discovered = set()
@@ -666,19 +665,14 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
             menu_state = game_state.get('game', {}).get('menu_state', 0)
             menu_status = "MENU_OPEN" if menu_state > 0 else "GAMEPLAY"
             
-            # Stuck detection (for LLM unstuck assistance)
-            stuck_steps = getattr(self, 'steps_in_current_room', 0)
-            is_stuck = stuck_steps > 500  # Consider stuck after 500 steps in same room
-            
             # Building detection (rooms 0x30-0x5F are typically indoor locations)
             is_indoor = (0x30 <= room_id <= 0x4F) or (0x50 <= room_id <= 0x5F and room_id not in range(0x50, 0x60))
             # More reliable: check if location name suggests indoor
             is_indoor_location = any(word in location_name.lower() for word in ['shop', 'house', 'interior', 'room'])
             
-            stuck_hint = f" [⚠️ STUCK: {stuck_steps} steps in this room!]" if is_stuck else ""
             indoor_hint = f" [🏠 INDOOR: Shop/house interior]" if (is_indoor or is_indoor_location) else ""
             
-            print(f"📤 SENDING TO LLM: {location_name}, health={health}/{max_health}, equipped=[A:{a_item_name}, B:{b_item_name}], state={menu_status}{stuck_hint}{indoor_hint}")
+            print(f"📤 SENDING TO LLM: {location_name}, health={health}/{max_health}, equipped=[A:{a_item_name}, B:{b_item_name}], state={menu_status}{indoor_hint}")
             
             # Format prompt with game state
             # NOTE: X,Y removed - Y position is broken (stuck at 0), misleading to send
@@ -695,9 +689,7 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                 menu_status=menu_status
             )
             
-            # Add stuck/indoor hints for LLM autonomous triggers
-            if is_stuck:
-                user_prompt += f"\n\n⚠️ STUCK ALERT: Link has been in this room for {stuck_steps} steps! Help PPO escape to a new area."
+            # Add indoor hint for LLM building navigation
             if is_indoor or is_indoor_location:
                 user_prompt += "\n\n🏠 BUILDING INTERIOR: You are inside a shop/house. Handle NPCs, purchases, and exit when done."
             
@@ -911,18 +903,9 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         import random
         llm_bonus = 0.0
         
-        # Check if agent is stuck (for 100% LLM call rate during stuck recovery)
-        stuck_steps = getattr(self, 'steps_in_current_room', 0)
-        is_stuck_mode = stuck_steps > 300  # Stuck threshold
-        
-        # STUCK MODE: Call LLM EVERY step (100% rate) until unstuck
-        if is_stuck_mode:
-            is_vision_step = self.llm_enabled  # Force vision call every step when stuck!
-            is_text_step = False
-        else:
-            # NORMAL MODE: Random probability-based sampling
-            is_vision_step = self.llm_enabled and (random.random() < self.llm_vision_probability)
-            is_text_step = self.llm_enabled and (not is_vision_step) and (random.random() < self.llm_text_probability)
+        # Random probability-based sampling (3% vision, 0% text)
+        is_vision_step = self.llm_enabled and (random.random() < self.llm_vision_probability)
+        is_text_step = self.llm_enabled and (not is_vision_step) and (random.random() < self.llm_text_probability)
         
         # Track if LLM ran this step (for HUD duplicate detection)
         llm_ran_this_step = is_vision_step or is_text_step
@@ -980,37 +963,6 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                     if thinking:
                         print(f"🤔 LLM THINKING: {thinking}")
                     print(f"💡 LLM SUGGESTS: {llm_action}")
-                    
-                    # Get current room for stuck recovery tracking
-                    current_room_id = game_state.get('player', {}).get('room', 0)
-                    stuck_steps = getattr(self, 'steps_in_current_room', 0)
-                    
-                    # STUCK RECOVERY OVERRIDE: Force takeover until room changes
-                    if stuck_steps > 300:  # Stuck threshold (reduced from 500)
-                        if not self._stuck_recovery_active:
-                            # Initiate stuck recovery
-                            self._stuck_recovery_active = True
-                            self._stuck_recovery_start_room = current_room_id
-                            print(f"🚨 STUCK RECOVERY INITIATED! {stuck_steps} steps in room {current_room_id}")
-                            print(f"   LLM will maintain control until room transition")
-                        
-                        # Check if room changed (escaped!)
-                        if current_room_id != self._stuck_recovery_start_room:
-                            print(f"✅ STUCK RECOVERY COMPLETE! Room {self._stuck_recovery_start_room} → {current_room_id}")
-                            self._stuck_recovery_active = False
-                            self._stuck_recovery_start_room = None
-                        else:
-                            # Still stuck - override LLM's TAKEOVER decision
-                            if not takeover:
-                                print(f"🔒 STUCK RECOVERY OVERRIDE: Forcing TAKEOVER=YES (still in room {current_room_id})")
-                            takeover = True  # Force takeover until room changes!
-                    else:
-                        # Not stuck - normal operation
-                        if self._stuck_recovery_active:
-                            # Was in recovery but now <300 steps (room changed)
-                            print(f"✅ STUCK RECOVERY COMPLETE! Room changed naturally")
-                            self._stuck_recovery_active = False
-                            self._stuck_recovery_start_room = None
                     
                     # Check if LLM is ending a takeover sequence and awarding completion reward
                     if not takeover and self._last_takeover_state and llm_sequence_reward > 0:
