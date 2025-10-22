@@ -54,8 +54,11 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         self._episode_count = 0
         self._total_reward = 0.0
         
-        # Track LLM takeover state for reward assignment
+        # Track LLM takeover state for reward assignment and analytics
         self._last_takeover_state = False  # Was LLM in control last step?
+        self._takeover_step_count = 0  # How many consecutive steps in takeover mode
+        self._total_takeover_sequences = 0  # Total number of takeover sequences
+        self._takeover_sequence_lengths = []  # Length of each takeover sequence (for stats)
         
         # Track recent room history for unique transition rewards
         self.recent_rooms = []  # Last 10 rooms visited
@@ -964,11 +967,31 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                         print(f"🤔 LLM THINKING: {thinking}")
                     print(f"💡 LLM SUGGESTS: {llm_action}")
                     
-                    # Check if LLM is ending a takeover sequence and awarding completion reward
-                    if not takeover and self._last_takeover_state and llm_sequence_reward > 0:
-                        print(f"🏆 LLM SEQUENCE COMPLETE! Awarding +{llm_sequence_reward:.0f} to PPO")
-                        print(f"   Achievement: {thinking[:80]}")
-                        llm_bonus += llm_sequence_reward
+                    # Track takeover state transitions and duration
+                    if takeover and not self._last_takeover_state:
+                        # Starting new takeover sequence
+                        self._total_takeover_sequences += 1
+                        self._takeover_step_count = 1
+                        print(f"🎬 TAKEOVER SEQUENCE #{self._total_takeover_sequences} STARTED")
+                        print(f"   Trigger: {thinking[:80]}")
+                    elif takeover and self._last_takeover_state:
+                        # Continuing takeover sequence
+                        self._takeover_step_count += 1
+                    elif not takeover and self._last_takeover_state:
+                        # Ending takeover sequence
+                        self._takeover_sequence_lengths.append(self._takeover_step_count)
+                        avg_length = sum(self._takeover_sequence_lengths) / len(self._takeover_sequence_lengths)
+                        print(f"🎬 TAKEOVER SEQUENCE #{self._total_takeover_sequences} ENDED")
+                        print(f"   Duration: {self._takeover_step_count} steps")
+                        print(f"   Average takeover length: {avg_length:.1f} steps")
+                        
+                        # Award completion reward if provided
+                        if llm_sequence_reward > 0:
+                            print(f"🏆 LLM SEQUENCE COMPLETE! Awarding +{llm_sequence_reward:.0f} to PPO")
+                            print(f"   Achievement: {thinking[:80]}")
+                            llm_bonus += llm_sequence_reward
+                        
+                        self._takeover_step_count = 0
                     
                     # Update takeover state for next step
                     self._last_takeover_state = takeover
