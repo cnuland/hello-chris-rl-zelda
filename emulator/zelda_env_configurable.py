@@ -490,7 +490,7 @@ class ZeldaConfigurableEnvironment(gym.Env):
                 
                 # NEW: Track inventory changes (detect item acquisition)
                 current_inventory = []
-                for i in range(16):  # Read 16 bytes of inventory
+                for i in range(25):  # EXPANDED to 25 bytes (was 16) - includes Gnarled Key at 0xC69A!
                     current_inventory.append(self.bridge.get_memory(0xC682 + i))
                 current_inventory = tuple(current_inventory)
                 
@@ -536,9 +536,11 @@ class ZeldaConfigurableEnvironment(gym.Env):
                                         print(f"⚔️ MILESTONE: Wooden Sword Obtained!")
                                         self.milestones['sword_obtained'] = True
                                         total_reward += reward_config.get('sword_obtained', 200.0)
-                                elif new == 0x14:  # Gnarled Key (hex 0x14 = decimal 20)
-                                    print(f"🔑🌳 MILESTONE: Gnarled Key Obtained from Maku Tree!")
-                                    total_reward += reward_config.get('gnarled_key_obtained', 200.0)
+                                elif new == 0x04 and i == 24:  # Gnarled Key at 0xC69A (slot 24, value 0x04) - FOUND via memory scan!
+                                    if not self.milestones.get('gnarled_key_obtained'):
+                                        print(f"🔑🌳 MILESTONE: Gnarled Key Obtained from Maku Tree!")
+                                        self.milestones['gnarled_key_obtained'] = True
+                                        total_reward += reward_config.get('gnarled_key_obtained', 500.0)
                 
                 self.last_inventory = current_inventory
                 
