@@ -62,7 +62,7 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         
         # Takeover release cooldown (LLM must confirm release for N steps)
         self._release_cooldown_count = 0  # How many times LLM said TAKEOVER: NO
-        self._release_cooldown_threshold = 10  # Must say NO for 10 consecutive calls to release
+        self._release_cooldown_threshold = 5  # REDUCED from 10: Must say NO for 5 consecutive calls to release
         
         # Track recent room history for unique transition rewards
         self.recent_rooms = []  # Last 10 rooms visited
