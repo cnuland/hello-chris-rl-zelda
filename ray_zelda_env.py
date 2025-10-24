@@ -67,6 +67,10 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
         # Track recent room history for unique transition rewards
         self.recent_rooms = []  # Last 10 rooms visited
         
+        # LLM decision history (prevent repeated mistakes)
+        self.llm_history = []  # Rolling history of LLM observations and decisions
+        self.llm_history_max_size = 100  # Keep last 100 LLM calls
+        
         # Initialize exploration tracking
         self.rooms_discovered = set()
         self.grid_areas_explored = set()
@@ -700,6 +704,16 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
             if is_indoor or is_indoor_location:
                 user_prompt += "\n\n🏠 BUILDING INTERIOR: You are inside a shop/house. Handle NPCs, purchases, and exit when done."
             
+            # Add LLM decision history (last 10 most recent, to avoid token overflow)
+            if screenshot_base64 and len(self.llm_history) > 0:
+                recent_history = self.llm_history[-10:]  # Last 10 decisions
+                user_prompt += "\n\n📜 YOUR RECENT DECISIONS (last 10 vision calls):\n"
+                for i, entry in enumerate(recent_history, 1):
+                    user_prompt += f"{i}. Saw: {entry['scene'][:60]}\n"
+                    user_prompt += f"   Thought: {entry['thinking'][:60]}\n"
+                    user_prompt += f"   Did: {entry['action']}\n"
+                user_prompt += "\n⚠️ Learn from your history - don't repeat failed strategies!"
+            
             # Prepare API request (different format for vision vs text-only)
             if screenshot_base64:
                 # Vision call: multimodal format with image
@@ -979,6 +993,19 @@ class ZeldaRayEnv(ZeldaConfigurableEnvironment):
                     if thinking:
                         print(f"🤔 LLM THINKING: {thinking}")
                     print(f"💡 LLM SUGGESTS: {llm_action}")
+                    
+                    # Record this decision in history (for future context)
+                    if is_vision_step:
+                        self.llm_history.append({
+                            'scene': scene_desc,
+                            'thinking': thinking,
+                            'action': llm_action,
+                            'takeover': takeover,
+                            'step': self._step_count
+                        })
+                        # Keep history size bounded
+                        if len(self.llm_history) > self.llm_history_max_size:
+                            self.llm_history.pop(0)  # Remove oldest
                     
                     # RELEASE COOLDOWN: LLM must confirm TAKEOVER: NO for 10 consecutive calls
                     # This prevents premature release after completing sub-tasks
