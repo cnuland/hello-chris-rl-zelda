@@ -408,6 +408,12 @@ class ZeldaConfigurableEnvironment(gym.Env):
         
         total_reward = base_reward
         
+        # REWARD MULTIPLIER: 2x all rewards after completing Maku Tree quest!
+        # This creates strong incentive to reach Maku Tree early in episode
+        reward_multiplier = 1.0
+        if self.milestones.get('gnarled_key_obtained'):
+            reward_multiplier = 2.0  # Double all rewards after getting Gnarled Key!
+        
         # BASE REWARDS
         # Time penalty (encourages efficiency)
         total_reward += reward_config.get('time_penalty', -0.0001)
@@ -644,6 +650,13 @@ class ZeldaConfigurableEnvironment(gym.Env):
         except Exception as e:
             # If memory access fails, just use base rewards
             pass
+        
+        # Apply reward multiplier (2x after Gnarled Key obtained!)
+        if reward_multiplier > 1.0:
+            original_reward = total_reward
+            total_reward *= reward_multiplier
+            if self.step_count % 500 == 0:  # Log occasionally
+                print(f"💎 REWARD MULTIPLIER ACTIVE! {original_reward:.1f} × {reward_multiplier} = {total_reward:.1f}")
         
         return total_reward
 
